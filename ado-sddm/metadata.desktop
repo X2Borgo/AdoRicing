@@ -1,0 +1,15 @@
+[SddmGreeterTheme]
+Name=Ado Hibana
+Comment=Ado themed login screen
+Type=SddmTheme
+Version=1.0
+QtVersion=6
+Author=Borgo
+Copyright=Copyright (C) 2025 Borgo
+License=GPL-3.0-or-later
+Screenshot=Backgrounds/ado-login.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=ado-hibana
+Theme-API=2.0
