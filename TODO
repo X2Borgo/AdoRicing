@@ -1,0 +1,7 @@
+update the install.sh to include also the terminal customizations ( kate and zsh with starship prompt )
+
+TO ADD:
+- rofi
+- starship
+- floorp
+- kate
