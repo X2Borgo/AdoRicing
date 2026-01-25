@@ -1,0 +1,106 @@
+/* ~/.config/rofi/ado.rasi */
+
+/***** COLORS & FONTS *****/
+* {
+    /* Ado Palette */
+    bg:             #0f152eE6; /* Deep Navy (90% opacity) */
+    bg-alt:         #1a2035FF;
+    fg:             #c0c0c0FF;
+    accent:         #00f0ffFF; /* Cyan */
+    active-color:   #d000ffFF; /* Magenta */
+
+    font:           "JetBrainsMono Nerd Font Bold 12";
+
+    background-color: transparent;
+    text-color:       @fg;
+    margin:           0;
+    padding:          0;
+    spacing:          0;
+}
+
+/***** MAIN WINDOW *****/
+window {
+    width:            45%;
+    transparency:     "real";
+    background-color: @bg;
+    border:           2px;
+    border-color:     @accent;
+    border-radius:    12px;
+}
+
+/***** LAYOUT CONTAINER *****/
+mainbox {
+    padding:          20px;
+    /* ADDED mode-switcher HERE so you can see the tabs! */
+    children:         [ inputbar, listview, mode-switcher ];
+}
+
+/***** INPUT BAR *****/
+inputbar {
+    background-color: @bg-alt;
+    border-radius:    8px;
+    padding:          12px;
+    margin:           0 0 15px 0;
+    children:         [ prompt, entry ];
+}
+
+prompt {
+    text-color:       @active-color;
+    padding:          0 10px 0 0;
+    font:             "JetBrainsMono Nerd Font Bold 12";
+}
+
+entry {
+    placeholder:      "Search...";
+    placeholder-color: #4d556d;
+    text-color:       @accent;
+    blink:            true;
+}
+
+/***** APP LIST *****/
+listview {
+    lines:            8;
+    columns:          1;
+    scrollbar:        false;
+}
+
+element {
+    padding:          10px;
+    border-radius:    6px;
+    spacing:          10px;
+}
+
+element-icon {
+    size:             24px;
+}
+
+element-text {
+    vertical-align:   0.5;
+}
+
+element selected.normal {
+    background-color: @bg-alt;
+    text-color:       @accent;
+    border:           0 0 0 3px;
+    border-color:     @active-color;
+}
+
+/***** MODE SWITCHER (The Tabs: Apps, Term, Files) *****/
+mode-switcher {
+    spacing:          10px;
+    margin:           15px 0 0 0; /* Push it to the bottom */
+}
+
+button {
+    padding:          10px;
+    background-color: @bg-alt;
+    text-color:       @fg;
+    border-radius:    6px;
+    vertical-align:   0.5;
+    horizontal-align: 0.5;
+}
+
+button selected {
+    background-color: @accent;  /* Cyan Background for active tab */
+    text-color:       #0f152e;  /* Dark Text for contrast */
+}
