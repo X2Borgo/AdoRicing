@@ -1,0 +1,90 @@
+# ~/.config/starship.toml
+
+# 1. THE LAYOUT
+# We create one long "pill" that changes color:
+# Directory (Blue) -> Git/Languages (Dark Navy) -> End Cap
+format = """
+$status\
+(fg:#2b65ff)\
+$directory\
+[](fg:#2b65ff bg:#1a2035)\
+$git_branch\
+$git_status\
+$git_metrics\
+$python\
+$nodejs\
+[](fg:#1a2035)\
+$line_break\
+$character\
+"""
+
+continuation_prompt = "[ ▶▶ ](bold cyan)"
+
+# 2. DIRECTORY (Blue Background)
+[directory]
+style = "bg:#2b65ff fg:#0f152e bold"
+format = "[ $path ]($style)"
+truncation_length = 1
+truncation_symbol = "…/"
+
+# 3. GIT (Dark Navy Background)
+[git_branch]
+symbol = " "
+style = "bg:#1a2035 fg:#00f0ff" # Cyan text on Navy
+format = "[[ $symbol$branch ]($style)]($style)"
+
+[git_status]
+style = "bg:#1a2035 fg:#ff4d4d" # Red text on Navy background
+
+# 1. THE TRICK:
+# We removed '$all_status' from the format.
+# Now, if the module is active (dirty), it prints " ! " once.
+format = '[ ! ]($style)'
+
+# 2. OPTIONAL:
+# If you don't want the "!" to show up when you are just "Ahead" (need to push),
+# but ONLY when you have work to commit, add these empty strings:
+
+ahead = ""
+diverged = ""
+behind = ""
+up_to_date = ""
+
+[git_metrics]
+# CHANGED: Must be enabled explicitly
+disabled = false
+# Styles must include bg:#1a2035 to blend with the background pill
+added_style = 'bold green bg:#1a2035'
+deleted_style = 'bold red bg:#1a2035'
+format = '[+$added]($added_style) [-$deleted]($deleted_style) '
+
+# 4. LANGUAGES (All appear inside the Dark Navy block)
+
+[python]
+symbol = " "
+style = "bg:#1a2035 fg:#ffe066" # Yellow/Gold
+format = "[[ $symbol($version) ]($style)]($style)"
+
+[nodejs]
+symbol = " "
+style = "bg:#1a2035 fg:#00e0b0" # Green
+format = "[[ $symbol($version) ]($style)]($style)"
+
+# 5. THE PROMPT SYMBOL (On a new line)
+[line_break]
+disabled = false
+
+[character]
+success_symbol = "[➜](bold #00f0ff)" # Cyan arrow
+error_symbol = "[➜](bold #ff4d4d)"   # Red arrow
+
+[status]
+symbol = '🔴'
+success_symbol = '🟢'
+format = '[$symbol$maybe_int]($style) '
+map_symbol = true
+disabled = false
+
+# 6. DISABLE UNUSED MODULES
+[package]
+disabled = true
