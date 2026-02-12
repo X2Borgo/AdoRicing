@@ -31,7 +31,7 @@ Column {
     id: inputContainer
     Layout.fillWidth: true
 
-    property Control exposeSession: sessionSelect.exposeSession
+    property alias exposeSession: sessionSelect.exposeSession
     property bool failed
     property string currentUsername: ""
     
@@ -40,6 +40,8 @@ Column {
         if (config.ForceLastUser == "true" && selectUser.currentText) {
             setSelectedUser(selectUser.currentText)
         }
+        // Auto-focus password field on load
+        password.forceActiveFocus()
     }
     
     // Functions to be called by parent (LoginForm)
@@ -250,7 +252,7 @@ Column {
             anchors.centerIn: parent
             height: root.font.pointSize * 3
             width: parent.width
-            focus: config.ForcePasswordFocus == "true" ? true : false
+            focus: true
             selectByMouse: true
             echoMode: revealSecret.checked ? TextInput.Normal : TextInput.Password
             placeholderText: config.TranslatePlaceholderPassword || textConstants.password
@@ -703,8 +705,8 @@ Column {
 
     Connections {
         target: sddm
-        onLoginSucceeded: {}
-        onLoginFailed: {
+        function onLoginSucceeded() {}
+        function onLoginFailed() {
             errorShakeAnimation.start()
             failed = true
             resetError.running ? resetError.stop() && resetError.start() : resetError.start()

@@ -1,0 +1,8 @@
+assets
+useful_images
+code.sh
+
+# Ignore hidden system files and folders
+.*
+!**.zshrc
+!.gitignore

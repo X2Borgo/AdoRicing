@@ -1,8 +1,66 @@
-update the install.sh to include also the terminal customizations ( kate and zsh with starship prompt )
+# TODO - AdoRicing Theme
 
-TO ADD:
-- rofi
-- starship
-- floorp
+## ✅ Completed
 
-add whatever I want
+- [x] SDDM theme with cyberpunk aesthetics
+- [x] User profile picture picker
+- [x] Auto-focus on password field
+- [x] Auto-select default/last user on SDDM load
+- [x] Kitty terminal configuration
+- [x] Starship prompt configuration
+- [x] ZSH configuration with Oh My Zsh
+- [x] Fastfetch custom branding
+- [x] Rofi launcher theme
+- [x] Comprehensive install.sh script
+- [x] JetBrainsMono Nerd Font installation
+- [x] Automatic backups of existing configurations
+- [x] Complete README with documentation
+
+## 🚧 In Progress / Future Enhancements
+
+### High Priority
+- [ ] Kate color scheme
+- [ ] Zed editor theme/settings
+- [ ] Floorp browser theme/customization
+- [ ] GRUB bootloader theme matching Ado aesthetic
+- [ ] Plymouth boot splash screen
+
+### Medium Priority
+- [ ] KDE Plasma theme integration
+  - [ ] Global theme
+  - [ ] Window decorations
+  - [ ] Panel/Taskbar styling
+  - [ ] Widget themes
+- [ ] Notification styling (dunst/mako alternatives for KDE)
+- [ ] Screenshot/demo images for README
+- [ ] Video preview/demo
+- [ ] KVANTUM theme for Qt applications
+
+### Low Priority / Nice to Have
+- [ ] Discord BetterDiscord theme
+- [ ] Spotify Spicetify theme
+- [ ] GTK theme for cross-compatibility
+- [ ] Wallpaper collection
+- [ ] Icon pack recommendation/customization
+- [ ] Cursor theme
+- [ ] Multiple color scheme variants
+  - [ ] Light mode alternative
+  - [ ] Different accent colors
+- [ ] Conky system monitor widgets
+- [ ] Tiling WM configurations (Hyprland, Sway)
+
+## 🐛 Known Issues
+
+- None currently reported
+
+## 📝 Notes
+
+- All configurations use the Ado Hibana color palette
+- Focus on KDE 6 Wayland compatibility
+- No X11 dependencies (as per project rules)
+- Uses qdbus6, kcmshell6, kate for KDE integration
+
+## 💡 Ideas / Feature Requests
+
+Add your ideas here:
+-

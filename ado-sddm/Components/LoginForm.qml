@@ -54,12 +54,16 @@ ColumnLayout {
         line1Animation.start()
         line2Animation.start()
         line3Animation.start()
-
-        // 2. Auto-select the first user if none is selected
-        // We access the internal list of the userPicker
-        if (userPicker.userList && userPicker.userList.currentIndex === -1 && userModel.count > 0) {
-            userPicker.userList.currentIndex = 0;
-            input.focusPasswordField();
+    }
+    
+    Connections {
+        target: userPicker
+        function onUserSelected(username, index) {
+            formContainer.selectedUsername = username
+            formContainer.selectedUserIndex = index
+            input.setSelectedUser(username)
+            // Focus password field after user is auto-selected or manually selected
+            input.focusPasswordField()
         }
     }
 
@@ -103,14 +107,6 @@ ColumnLayout {
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: 100
             Layout.preferredHeight: 100
-            
-            onUserSelected: function(username, index) {
-                formContainer.selectedUsername = username
-                formContainer.selectedUserIndex = index
-                input.setSelectedUser(username)
-                // Focus password field after selection
-                input.focusPasswordField()
-            }
         }
     }
 
@@ -152,7 +148,7 @@ ColumnLayout {
         id: systemButtons
         Layout.alignment: Qt.AlignRight
         Layout.preferredHeight: 30  // Very compact buttons
-        exposedSession: input.exposeSession
+        exposedSession: input.exposeSession || null
         
         opacity: 0
         

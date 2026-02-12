@@ -45,7 +45,7 @@ Pane {
     palette.window: config.BackgroundColor
 
     font.family: config.Font
-    font.pointSize: config.FontSize !== "" ? config.FontSize : parseInt(height / 60)  // Larger base font for bigger UI
+    font.pointSize: Math.max(1, config.FontSize !== "" ? config.FontSize : parseInt(height / 60))  // Larger base font for bigger UI
     focus: true
 
     property bool leftleft: config.HaveFormBackground == "true" &&

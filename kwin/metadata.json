@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "AdoRicing"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Automatically dim inactive windows on secondary monitors while keeping the active window and all windows on the primary monitor fully opaque",
+        "Icon": "preferences-system-windows",
+        "Id": "ado-monitor-transparency",
+        "License": "GPL-3.0",
+        "Name": "Ado Monitor Transparency",
+        "Version": "1.1.0"
+    },
+    "X-Plasma-API": "javascript"
+}

@@ -32,10 +32,10 @@ Column {
 
     Label {
         anchors.horizontalCenter: parent.horizontalCenter
-        font.pointSize: config.HeaderText !=="" ? root.font.pointSize * 3 : 0
+        font.pointSize: (config.HeaderText || "") !== "" ? root.font.pointSize * 3 : 0
         color: root.palette.text
         renderType: Text.QtRendering
-        text: config.HeaderText
+        text: config.HeaderText || ""
     }
 
     Label {
