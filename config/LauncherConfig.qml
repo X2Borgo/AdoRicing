@@ -65,6 +65,14 @@ JsonObject {
             dangerous: false
         },
         {
+            name: "Docker",
+            icon: "deployed_code",
+            description: "Open the Docker management menu",
+            command: ["sh", "-lc", "$HOME/.config/hypr/scripts/DockerMenu.sh"],
+            enabled: true,
+            dangerous: false
+        },
+        {
             name: "Light",
             icon: "light_mode",
             description: "Change the scheme to light mode",
@@ -108,7 +116,7 @@ JsonObject {
             name: "Lock",
             icon: "lock",
             description: "Lock the current session",
-            command: ["loginctl", "lock-session"],
+            command: ["sh", "-lc", "$HOME/.config/hypr/scripts/LockScreen.sh"],
             enabled: true,
             dangerous: false
         },
