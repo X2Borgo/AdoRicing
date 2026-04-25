@@ -1,0 +1,14 @@
+{
+    "id": "dockerLauncher",
+    "name": "Docker",
+    "description": "Docker actions for the current DMS launcher",
+    "version": "1.0.0",
+    "author": "OpenAI",
+    "icon": "deployed_code",
+    "type": "launcher",
+    "capabilities": ["command-execution"],
+    "component": "./DockerLauncher.qml",
+    "permissions": [
+        "settings_read"
+    ]
+}
