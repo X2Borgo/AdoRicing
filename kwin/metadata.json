@@ -14,5 +14,6 @@
         "Name": "Ado Monitor Transparency",
         "Version": "1.1.0"
     },
-    "X-Plasma-API": "javascript"
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
 }

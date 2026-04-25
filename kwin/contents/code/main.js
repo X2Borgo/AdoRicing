@@ -4,6 +4,11 @@
 
 const TRANSPARENCY_LEVEL = 0.85;
 const SCRIPT_NAME = "AdoTransparency";
+const TOGGLE_SHORTCUT_NAME = "AdoMonitorTransparencyToggle";
+const TOGGLE_SHORTCUT_TEXT = "Toggle Ado Monitor Transparency";
+const TOGGLE_SHORTCUT_DEFAULT = "Meta+Ctrl+Alt+T";
+
+let scriptEnabled = true;
 
 // Logging helper
 function log(message) {
@@ -65,6 +70,13 @@ function updateClientOpacity(client) {
     }
     
     try {
+        if (!scriptEnabled) {
+            if (client.opacity !== 1.0) {
+                client.opacity = 1.0;
+            }
+            return;
+        }
+
         const screenIndex = getScreenIndex(client);
         const isActive = (client === workspace.activeWindow);
         
@@ -88,6 +100,12 @@ function updateClientOpacity(client) {
     } catch (e) {
         logError(`Failed to update opacity for window: ${client.caption}`, e);
     }
+}
+
+function toggleScript() {
+    scriptEnabled = !scriptEnabled;
+    log(`Script ${scriptEnabled ? "enabled" : "disabled"} via shortcut`);
+    updateAllWindows();
 }
 
 // Update all windows
@@ -143,6 +161,7 @@ function initialize() {
     log("Initializing script...");
     log(`Transparency level: ${TRANSPARENCY_LEVEL * 100}%`);
     log(`Number of screens: ${workspace.screens.length}`);
+    log(`Default shortcut: ${TOGGLE_SHORTCUT_DEFAULT}`);
     
     // Setup handlers for existing windows
     try {
@@ -159,6 +178,13 @@ function initialize() {
     
     // Connect workspace signals
     try {
+        registerShortcut(
+            TOGGLE_SHORTCUT_NAME,
+            TOGGLE_SHORTCUT_TEXT,
+            TOGGLE_SHORTCUT_DEFAULT,
+            toggleScript
+        );
+
         workspace.windowActivated.connect(function() {
             updateAllWindows();
         });
