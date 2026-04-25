@@ -3,9 +3,9 @@
 // Displays user avatars for selection before password entry
 //
 
-import QtQuick 2.11
-import QtQuick.Layouts 1.11
-import QtQuick.Controls 2.4
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
 import Qt5Compat.GraphicalEffects
 
 Item {

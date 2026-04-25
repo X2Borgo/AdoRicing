@@ -22,11 +22,11 @@
 // along with SDDM Sugar Candy. If not, see <https://www.gnu.org/licenses/>
 //
 
-import QtQuick 2.11
-import QtQuick.Layouts 1.11
-import SddmComponents 2.0 as SDDM
+import QtQuick
+import QtQuick.Layouts
+import SddmComponents as SDDM
 import Qt5Compat.GraphicalEffects 
-import QtQuick.Controls 2.4
+import QtQuick.Controls
 
 ColumnLayout {
     id: formContainer
@@ -53,7 +53,6 @@ ColumnLayout {
         // 1. Staggered entrance animations
         line1Animation.start()
         line2Animation.start()
-        line3Animation.start()
     }
     
     Connections {
