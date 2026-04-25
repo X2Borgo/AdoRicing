@@ -11,6 +11,8 @@ source $ZSH/oh-my-zsh.sh
 
 # --- 0. ADO DISPLAY FUNCTION (With Dynamic Height) ---
 function ado_display() {
+    [[ -n "${CODEX_CI:-}" ]] && return 0
+
     local CONFIG_FILE="$HOME/.config/fastfetch/ado.jsonc"
     local CACHE_DIR="/tmp/fastfetch_spotify"
     mkdir -p "$CACHE_DIR"
@@ -71,10 +73,18 @@ alias re="source $HOME/.zshrc"
 alias c="clear" # 'clear' is overridden below to show Ado
 alias kconf="kate ~/Desktop/AdoRicing/terminalCustomization/kitty/kitty.conf"
 alias fconf="kate $HOME/.config/fastfetch/ado.jsonc"
-alias ado="zed ~/Desktop/AdoRicing"
+
+# Custom zed workspace aliases
+alias ado="cd ~/Desktop/AdoRicing && zed ."
+alias adoi="~/Desktop/AdoRicing/install.sh"
+alias dora="cd ~/Desktop/DoraFeature && zed ."
+alias drv="cd ~/Desktop/DreviaEsports && zed ."
+
+alias bigup='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 
 alias gg="gemini"
 alias z="zed ."
+alias k="kubecolor"
 
 # Create the standard alias for typing 'clear'
 alias clear="tput reset && ado_display && set_win_title"
@@ -98,6 +108,8 @@ bindkey "^[[97;6u" select-all
 . "$HOME/.local/bin/env"
 export PATH="$PATH:$HOME/.local/bin"
 export PATH=$PATH:$(go env GOPATH)/bin
+if [ -d "$HOME/.nix-profile/bin" ]; then export PATH="$HOME/.nix-profile/bin:$PATH"; fi
+if [ -d "/nix/var/nix/profiles/default/bin" ]; then export PATH="/nix/var/nix/profiles/default/bin:$PATH"; fi
 
 # Google Cloud SDK
 if [ -f '/home/alborghi/google-cloud-sdk/path.zsh.inc' ]; then . '/home/alborghi/google-cloud-sdk/path.zsh.inc'; fi

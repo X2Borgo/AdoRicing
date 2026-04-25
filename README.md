@@ -1,462 +1,332 @@
 # AdoRicing - Ado Hibana Theme Suite
 
-A comprehensive theming system for Debian Trixie/KDE Plasma 6 Wayland, inspired by Ado's "Hibana" World Tour 2025. This suite provides a cohesive cyberpunk aesthetic across your entire desktop environment with an emphasis on both visual appeal and usability.
+A Hyprland-first theming suite for Debian Trixie/Wayland, inspired by Ado's "Hibana" World Tour 2025. The project now focuses on portable userland theming plus an optional SDDM greeter, while older Plasma-specific pieces remain in the repo as legacy components.
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Debian%20Trixie-red)
-![DE](https://img.shields.io/badge/DE-KDE%20Plasma%206-blue)
+![WM](https://img.shields.io/badge/WM-Hyprland-cyan)
 ![Display](https://img.shields.io/badge/display-Wayland-green)
 
-## 🎨 What's Included
+## What's Included
 
-### 🔐 SDDM Login Theme
-- Custom QML-based theme with cyberpunk aesthetics
-- Animated entrance with staggered fade-in effects
-- Auto-focus password field for instant login
-- Auto-select last user on startup
-- Glowing password field with pulsing animations
-- System buttons (shutdown, reboot, hibernate, suspend)
-- Session selector integration
-- Clock and date display
-- Blur effects and custom backgrounds
+### Terminal
+- Kitty theme with the Ado Hibana palette
+- Starship prompt with segmented styling and git integration
+- ZSH setup with Oh My Zsh
+- Fastfetch branding and themed output
 
-### 💻 Terminal Customization
-- **Kitty Terminal** - Complete Ado Hibana color scheme with 95% transparency
-- **Starship Prompt** - Segmented pill design with git integration
-- **ZSH Configuration** - Oh My Zsh with Starship initialization
-- **Fastfetch** - Custom system info with Ado branding
+### Launchers And Editors
+- Rofi theme for app launching and quick switching
+- Zed themes: `Ado Hibana` and `Ado Hibana Soft`
+- Kate/KWrite syntax theme for users who still use Kate outside Plasma
 
-### 🎨 Editor Themes
-- **Kate/KWrite** - Complete syntax highlighting for 40+ languages
-- **Zed Editor** - Two theme variants:
-  - **Ado Hibana (Original)** - High-contrast cyberpunk aesthetic
-  - **Ado Hibana Soft** - Eye-friendly for 8+ hour coding sessions
-  - Full syntax highlighting for 50+ languages
-  - Comprehensive UI element colors
-  - Optimized for professional daily use
+### Wayland Shell Layer
+- Caelestia Shell support via Hypr startup command
+- Waybar fallback when Caelestia cannot start
+- A full `hypr/` config tree installed into `~/.config/hypr`
+- Ado-styled Hyprland colors, borders, and Hyprlock defaults
 
-### 🚀 Application Launchers
-- **Rofi** - Modern tabbed interface with four modes (Apps, Terminal, Files, Windows)
-- Keyboard navigation and icon support
-- Cyberpunk color scheme with cyan/magenta accents
+### Optional Login Theme
+- SDDM greeter theme, still usable if your Hyprland session starts from SDDM
 
-### 🪟 Window Management
-- **KWin Transparency Script** - Automatically dims inactive windows on secondary monitors
-- Keeps active window and primary monitor at 100% opacity
-- Works on both X11 and Wayland
-- Configurable transparency levels
+### Legacy Plasma Component
+- `kwin/` is kept for archival compatibility but is not part of the Hyprland path
 
-## 🎨 Color Palette
+## System Requirements
 
-Consistent colors across all components:
+- Debian Trixie or a compatible Debian-based distribution
+- Hyprland on Wayland
+- `sudo` access
+- Internet connection for downloads
+- JetBrainsMono Nerd Font
 
-| Color Name | Hex Code | Usage |
-|------------|----------|-------|
-| Void Navy | `#0f152e` | Deep background |
-| Module Navy | `#1a2035` | Secondary elements |
-| Cyan Accent | `#00f0ff` | Primary highlights |
-| Magenta Glow | `#d000ff` | Secondary highlights |
-| Silver Text | `#c0c0c0` | Main foreground |
-| Blue | `#2b65ff` | Information/Links |
-| Green | `#00e0b0` | Success states |
-| Yellow | `#ffcc00` | Warnings |
-| Red | `#ff4d4d` | Errors |
+Optional:
+- SDDM if you want the greeter theme
+- Caelestia CLI/shell or Quickshell installed separately for panel UI
 
-### Soft Theme Palette (Zed)
-For the eye-friendly Zed theme variant:
-- Soft Cyan: `#52c9d9` (30% desaturated)
-- Soft Purple: `#b88dd4` (softer keywords)
-- Soft Teal: `#6dc4a8` (strings)
-- Soft Gold: `#e6be6e` (numbers)
-- Lighter Background: `#1e2538` (25% lighter)
+## Quick Installation
 
-## 📋 System Requirements
-
-- **OS**: Debian Trixie (or compatible Debian-based distribution)
-- **Desktop Environment**: KDE Plasma 6
-- **Display Server**: Wayland (X11 also supported for KWin script)
-- **Privileges**: sudo access required
-- **Network**: Internet connection for downloads
-- **Font**: JetBrainsMono Nerd Font (auto-installed)
-
-## 🚀 Quick Installation
-
-### Install Everything (Recommended)
+Default install is now the Hyprland-oriented set:
 
 ```bash
 cd ~/Desktop/AdoRicing
 ./install.sh
 ```
 
-This installs all components with default settings.
+That installs:
+- Hyprland config (`~/.config/hypr`)
+- Local Caelestia shell link (`~/.config/quickshell/caelestia` -> `~/Desktop/AdoRicing/shell`)
+- Kitty
+- Starship
+- ZSH
+- Fastfetch
+- Rofi
+- Zed
+- Fonts
+- Quickshell config
 
-### Selective Installation
-
-Install only specific components:
+## Selective Installation
 
 ```bash
-./install.sh --sddm       # Login theme
-./install.sh --kitty      # Kitty terminal
-./install.sh --starship   # Starship prompt
-./install.sh --zsh        # ZSH configuration
-./install.sh --fastfetch  # System info tool
-./install.sh --kate       # Kate/KWrite theme
-./install.sh --rofi       # Rofi launcher
-./install.sh --zed        # Zed editor themes
-./install.sh --fonts      # JetBrainsMono Nerd Font
-./install.sh --kwin       # KWin transparency script
+./install.sh --hyprland    # Same as default
+./install.sh --hypr-config # Install only ~/.config/hypr payload
+./install.sh --caelestia-shell # Link local shell/ repo into quickshell config path
+./install.sh --kitty
+./install.sh --starship
+./install.sh --zsh
+./install.sh --fastfetch
+./install.sh --rofi
+./install.sh --zed
+./install.sh --fonts
+./install.sh --quickshell
+./install.sh --kate
+./install.sh --sddm       # Optional greeter theme
+./install.sh --kwin       # Legacy Plasma-only component
 ```
 
-Combine multiple options:
+Combine options as needed:
+
 ```bash
-./install.sh --kitty --starship --zsh --fastfetch
+./install.sh --kitty --rofi --zed --quickshell
 ```
 
-### Get Help
+Help:
 
 ```bash
 ./install.sh --help
 ```
 
-## 🎯 Post-Installation
+## Hyprland Notes
 
-After installation:
+The installer now deploys a complete Hypr config tree to:
 
-1. **Log out and back in** to see the SDDM theme
-2. **Restart your terminal** or run: `source ~/.zshrc`
-3. **Launch Rofi** with: `rofi -show drun`
-4. **Open Kitty** to see the terminal theme
-5. **Configure Kate/KWrite**: Settings → Configure Kate → Editor Component → Colors & Fonts → Select "Ado Hibana"
-6. **Open Zed**: Theme is automatically set to "Ado Hibana Soft" (recommended for work)
-7. **Verify KWin Script**: Open windows on secondary monitor to see transparency effect
-
-## 📁 Project Structure
-
+```bash
+~/.config/hypr/
 ```
+
+If you install the Quickshell config, it is placed at:
+
+```bash
+~/.config/quickshell/AdoRicing/main.qml
+```
+
+The installed Hypr startup config now launches `~/.config/hypr/scripts/LaunchShell.sh`, which:
+
+```conf
+exec-once = $scriptsDir/LaunchShell.sh
+```
+
+It tries the local Caelestia config first, then installed Caelestia configs, and finally falls back to Waybar if Caelestia fails during startup.
+
+If you are using Nix flakes, add the Caelestia shell input to your flake configuration:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+
+    caelestia-shell = {
+      url = "github:caelestia-dots/shell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+}
+```
+
+The shipped Hypr config has been adjusted to the Ado palette (cyan/magenta accents, dark navy background, and tuned Hyprlock styling). For Caelestia installation and CLI usage, refer to the official repositories:
+
+- https://github.com/caelestia-dots/shell
+- https://github.com/caelestia-dots/scripts
+
+## Project Structure
+
+```text
 AdoRicing/
-├── ado-sddm/              # SDDM login theme
-│   ├── Main.qml
-│   ├── Components/
-│   └── Backgrounds/
-├── kate/                  # Kate/KWrite editor theme
-│   └── Ado-Hibana.theme
-├── kwin/                  # KWin transparency script
-│   ├── contents/
-│   ├── metadata.json
-│   └── install.sh
+├── ado-sddm/              # Optional SDDM theme
+├── hypr/                  # Hyprland config payload (installed to ~/.config/hypr)
+├── kate/                  # Kate/KWrite theme
+├── kwin/                  # Legacy Plasma-only script
+├── quickshell/            # Quickshell panel config
 ├── rofi/                  # Rofi launcher theme
-│   ├── config.rasi
-│   └── ado.rasi
-├── terminal/              # Terminal configurations
-│   ├── kitty/
-│   ├── starship/
-│   ├── zsh/
-│   └── fastfetch/
-├── zed/                   # Zed editor themes
-│   ├── Ado-Hibana.json    # Both theme variants
-│   └── settings.json
-├── install.sh             # Automated installer
-├── README.md              # This file
-└── CHANGELOG.md           # Version history
+├── terminal/              # Kitty, Starship, ZSH, Fastfetch
+├── zed/                   # Zed themes and settings
+├── install.sh             # Hyprland-first installer
+├── README.md
+└── CHANGELOG.md
 ```
 
-## 🎨 Component Details
+## Component Details
 
-### SDDM Theme Features
-- **Auto-focus**: Password field automatically focused on load
-- **Auto-select**: Last logged-in user pre-selected
-- **Animations**: Smooth fade-in effects and glowing borders
-- **Customizable**: Edit `theme.conf` for colors, backgrounds, and behavior
-- **Preview**: Test with `sddm-greeter --test-mode --theme /usr/share/sddm/themes/ado-theme`
+### Kitty
+- 95% background opacity
+- JetBrainsMono Nerd Font
+- Ado Hibana accent colors
 
-### Zed Editor - Two Themes
+### Starship
+- Segmented prompt layout
+- Git status and branch info
+- Language/runtime modules
 
-#### Ado Hibana (Original)
-- High-contrast cyberpunk aesthetic
-- Bright cyan (#00f0ff) and magenta (#d000ff) accents
-- Best for: Demos, screenshots, short sessions
+### Fastfetch
+- Ado branding
+- Themed color blocks
+- Ready for Wayland desktop info output
 
-#### Ado Hibana Soft (Recommended)
-- Eye-friendly for 8+ hour coding sessions
-- 30% desaturated colors
-- 25% lighter background
-- Warmer color temperature (reduced blue light)
-- Better comment visibility
-- WCAG AAA compliant (7.8:1 contrast ratio)
+### Zed
+- `Ado Hibana` for high-contrast sessions
+- `Ado Hibana Soft` for long work sessions
 
-**Switch themes in Zed**: `Cmd/Ctrl + Shift + P` → "Select Theme"
+### Quickshell
+- Simple top bar layout
+- Music, network, volume, battery, and clock modules
+- Available as an optional panel config
 
-**Expected syntax colors**:
-- Keywords (if, for, class): Purple/Magenta
-- Functions: Cyan
-- Strings: Teal/Green
-- Numbers: Gold/Yellow
-- Types: Blue
-- Comments: Grey-Blue (italic)
+### Hyprland Config
+- Ships `hyprland.conf`, `hypridle.conf`, `hyprlock*.conf`, monitor/workspace files, and helper scripts
+- Includes an Ado color palette in `wallust/wallust-hyprland.conf`
+- Applies Ado border and lock screen styling in `UserConfigs/UserDecorations.conf` and `hyprlock*.conf`
 
-### KWin Transparency Script
-- **Purpose**: Automatically dim inactive windows on secondary monitors
-- **Primary Monitor**: Always 100% opacity
-- **Secondary Monitor (Active)**: 100% opacity
-- **Secondary Monitor (Inactive)**: 85% opacity (configurable)
-- **Requirements**: Multiple monitors, compositor enabled
-- **Configuration**: Edit `kwin/contents/code/main.js` to change transparency level
-- **Test**: Run `./kwin/test.sh` to verify installation
+### SDDM
+- Custom greeter visuals
+- Animated entry
+- User/session controls
+- Still optional for display-manager-based login flows
 
-### Terminal Setup
-- **Kitty**: 95% transparency with blur, beam cursor, JetBrainsMono font
-- **Starship**: Git integration, language version display, custom separators
-- **Fastfetch**: Ado branding, three-category layout (System/Desktop/Hardware)
-- **ZSH**: Oh My Zsh with Starship prompt, auto-run Fastfetch on startup
+## Customization
 
-### Rofi Launcher
-- **Modes**: Apps (`-show drun`), Terminal, Files, Windows
-- **Navigation**: Alt+Left/Right for tabs, Arrow keys for selection
-- **Icons**: Full icon support with fallbacks
-- **Theme**: Cyberpunk colors matching overall aesthetic
+### Adjust Kitty Transparency
 
-## 🔧 Customization
+Edit `~/.config/kitty/kitty.conf`:
 
-### Change SDDM Background
+```conf
+background_opacity 0.90
+```
+
+### Modify Starship Prompt
+
+Edit `~/.config/starship.toml`.
+
+### Customize Zed Colors
+
+Edit `~/.config/zed/themes/Ado-Hibana.json`.
+
+### Adjust Rofi Theme
+
+Edit `~/.config/rofi/ado.rasi`.
+
+### Tweak Quickshell
+
+Edit `~/.config/quickshell/AdoRicing/main.qml`.
+
+### Tweak Hyprland Theme
+
+Edit:
+- `~/.config/hypr/wallust/wallust-hyprland.conf` (palette)
+- `~/.config/hypr/UserConfigs/UserDecorations.conf` (borders, gaps, blur, shadows)
+- `~/.config/hypr/hyprlock.conf` (lock-screen visuals)
+
+### Change The SDDM Background
+
 Edit `/usr/share/sddm/themes/ado-theme/theme.conf`:
+
 ```conf
 [General]
 background=Backgrounds/YourImage.jpg
 ```
 
-### Adjust Kitty Transparency
-Edit `~/.config/kitty/kitty.conf`:
-```conf
-background_opacity 0.90  # Change from 0.95
-```
+## Troubleshooting
 
-### Modify Starship Prompt
-Edit `~/.config/starship.toml` to customize prompt segments and colors.
+### Quickshell Does Not Start
 
-### Change KWin Transparency Level
-Edit `~/.local/share/kwin/scripts/ado-monitor-transparency/contents/code/main.js`:
-```javascript
-const TRANSPARENCY_LEVEL = 0.70;  // Change from 0.85
-```
-Then run: `cd kwin && ./install.sh`
-
-### Customize Zed Colors
-Edit `~/.config/zed/themes/Ado-Hibana.json` directly to tweak colors.
-Zed will reload automatically.
-
-### Adjust Rofi Theme
-Edit `~/.config/rofi/ado.rasi` to change colors and layout.
-
-## 🐛 Troubleshooting
-
-### SDDM Theme Not Showing
 ```bash
-# Check configuration
-cat /etc/sddm.conf.d/ado-theme.conf
-
-# Should show:
-# [Theme]
-# Current=ado-theme
-
-# Reinstall if needed
-sudo ./install.sh --sddm
+which quickshell
+quickshell -p ~/.config/quickshell/AdoRicing/main.qml
 ```
 
-### Zed Syntax Highlighting Not Working
+If `quickshell` is missing, install the binary first. The repo only installs the config.
+
+### Caelestia Shell Does Not Start
+
 ```bash
-# Verify theme file exists
-ls ~/.config/zed/themes/Ado-Hibana.json
-
-# Reinstall theme
-./install.sh --zed
-
-# Check theme is active
-grep theme ~/.config/zed/settings.json
-
-# Should show: "theme": "Ado Hibana Soft"
+ls ~/.config/quickshell/caelestia/shell.qml
+which qs
+qs -p ~/.config/quickshell/caelestia/shell.qml
 ```
 
-### KWin Script Not Working
+If `qs` is missing, install Quickshell first. If `shell.qml` is missing, run `./install.sh --caelestia-shell`.
+
+Linking `shell/` is not enough by itself. The shell also needs the compiled `Caelestia` QML plugin and a Quickshell build that provides `qs.utils`. If those modules are missing, the launcher now falls back to Waybar and writes the startup error to:
+
 ```bash
-# Run diagnostic
-cd kwin
-./test.sh
-
-# Check if loaded
-qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.isScriptLoaded "ado-monitor-transparency"
-
-# Reinstall if needed
-./install.sh
-
-# View logs
-journalctl --user -f | grep AdoTransparency
+~/.cache/adoricing/shell-launch.log
 ```
 
-### Terminal Colors Wrong
+### Waybar Still Appears
+
 ```bash
-# Ensure font is installed
-fc-list | grep JetBrains
+pkill -x waybar
+systemctl --user disable --now waybar.service
+hyprctl reload
+```
 
-# Reload ZSH config
-source ~/.zshrc
+Then run `./install.sh --hypr --caelestia-shell` to reapply startup config and scripts.
 
-# Restart terminal
+### Hyprland Config Not Applied
+
+```bash
+hyprctl reload
+grep -n "AdoRicing" ~/.config/hypr/hyprlock.conf
 ```
 
 ### Rofi Not Launching
+
 ```bash
-# Check installation
 which rofi
-
-# Test with
 rofi -show drun
-
-# Reinstall if needed
-./install.sh --rofi
 ```
 
-## 🏥 Eye Health (Zed Users)
+### Kitty Theme Not Applied
 
-When using Zed for extended periods:
-
-1. **Use Ado Hibana Soft** theme for daily work
-2. **Follow 20-20-20 rule**: Every 20 minutes, look 20 feet away for 20 seconds
-3. **Adjust monitor brightness** to match ambient lighting
-4. **Proper positioning**: Monitor 20-26 inches away, top at eye level
-5. **Take breaks**: Stand up every hour
-6. **Blue light filter**: Enable system-level filter after sunset
-7. **Increase font size** if you find yourself leaning forward
-
-## 📚 Configuration Files
-
-After installation, configs are located at:
-
-```
-SDDM:      /usr/share/sddm/themes/ado-theme/
-Kitty:     ~/.config/kitty/kitty.conf
-Starship:  ~/.config/starship.toml
-Fastfetch: ~/.config/fastfetch/ado.jsonc
-Kate:      ~/.local/share/org.kde.syntax-highlighting/themes/
-Rofi:      ~/.config/rofi/
-Zed:       ~/.config/zed/themes/Ado-Hibana.json
-ZSH:       ~/.zshrc
-KWin:      ~/.local/share/kwin/scripts/ado-monitor-transparency/
+```bash
+ls ~/.config/kitty/kitty.conf
+fc-list | grep JetBrains
 ```
 
-## 🔄 Updating
+### Zed Theme Missing
 
-Pull latest changes:
+```bash
+ls ~/.config/zed/themes/Ado-Hibana.json
+grep theme ~/.config/zed/settings.json
+```
+
+### SDDM Theme Not Showing
+
+```bash
+cat /etc/sddm.conf.d/ado-theme.conf
+```
+
+Expected:
+
+```conf
+[Theme]
+Current=ado-theme
+```
+
+## Legacy Plasma Note
+
+The `kwin/` directory is still present, but it is now explicitly legacy. It exists for older Plasma setups and is not wired into the Hyprland-first workflow.
+
+## Updating
+
 ```bash
 cd ~/Desktop/AdoRicing
 git pull
 ./install.sh
 ```
 
-Backups are automatically created with timestamps.
+## Version Information
 
-## 🗑️ Uninstallation
-
-### Remove All Components
-```bash
-# SDDM
-sudo rm -rf /usr/share/sddm/themes/ado-theme
-sudo rm /etc/sddm.conf.d/ado-theme.conf
-
-# Kitty
-rm ~/.config/kitty/kitty.conf
-
-# Starship
-rm ~/.config/starship.toml
-
-# Fastfetch
-rm -rf ~/.config/fastfetch
-
-# Kate
-rm ~/.local/share/org.kde.syntax-highlighting/themes/Ado-Hibana.theme
-
-# Rofi
-rm -rf ~/.config/rofi
-
-# Zed
-rm ~/.config/zed/themes/Ado-Hibana.json
-rm ~/.config/zed/settings.json
-
-# KWin Script
-rm -rf ~/.local/share/kwin/scripts/ado-monitor-transparency
-kwriteconfig6 --file kwinrc --group Plugins --key ado-monitor-transparencyEnabled --delete
-qdbus6 org.kde.KWin /KWin reconfigure
-
-# ZSH (restore from backup)
-mv ~/.zshrc.backup.* ~/.zshrc
-```
-
-## 🎓 Tips & Tricks
-
-### Quick Rofi Launch
-Add to KDE keyboard shortcuts:
-- Command: `rofi -show drun`
-- Shortcut: `Meta + Space` (or your preference)
-
-### Test SDDM Without Logout
-```bash
-sddm-greeter --test-mode --theme /usr/share/sddm/themes/ado-theme
-```
-
-### Zed Theme Switching Aliases
-Add to `~/.zshrc`:
-```bash
-alias zed-work='sed -i "s/Ado Hibana\"/Ado Hibana Soft\"/g" ~/.config/zed/settings.json'
-alias zed-demo='sed -i "s/Ado Hibana Soft\"/Ado Hibana\"/g" ~/.config/zed/settings.json'
-```
-
-### Monitor KWin Script in Real-Time
-```bash
-journalctl --user -f | grep AdoTransparency
-```
-
-### Fastfetch on Demand
-```bash
-fastfetch --config ~/.config/fastfetch/ado.jsonc
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Areas for improvement:
-- Additional terminal emulator support
-- Light theme variants
-- More Rofi modes
-- Additional language support for Kate/Zed
-- Plasma color scheme integration
-
-## 🙏 Credits & Acknowledgments
-
-- **Inspiration**: Ado - "Hibana" World Tour 2025
-- **SDDM Base**: Marian Arlt - Sugar Candy theme
-- **Fonts**: JetBrains - JetBrainsMono, Ryanoasis - Nerd Fonts
-- **Starship**: Starship Team - Cross-shell prompt
-- **Desktop Environment**: KDE Team - Plasma 6
-
-## 📄 License
-
-GPL-3.0 License
-
-## 📞 Support
-
-For issues or questions:
-1. Check `CHANGELOG.md` for known issues
-2. Review troubleshooting section above
-3. Check component-specific logs
-4. Ensure system meets requirements
-
-## 🎯 Version Information
-
-**Current Version**: 1.1.0  
-**Last Updated**: 2025-01-XX  
-**Tested On**: Debian Trixie, KDE Plasma 6.3.6, Wayland  
-**Status**: Stable ✅
-
----
-
-**Enjoy your new Ado Hibana themed desktop! 🔥**
-
-*"Hibana" - Like a spark, ignite your creativity.*
+**Current Version**: 1.3.0  
+**Last Updated**: 2026-03-26  
+**Target**: Debian Trixie, Hyprland, Wayland  
+**Status**: Active

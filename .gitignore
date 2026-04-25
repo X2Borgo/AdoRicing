@@ -1,8 +1,13 @@
 assets
 useful_images
 code.sh
+applications
 
 # Ignore hidden system files and folders
 .*
 !**.zshrc
 !.gitignore
+terminal/kitty/ikitty
+
+.gemini/
+gha-creds-*.json
