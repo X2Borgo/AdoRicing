@@ -42,6 +42,14 @@ hl.config({
     layout = "dwindle",
 }
 })
+hl.config({
+  scrolling = {
+    follow_focus = true,
+    fullscreen_on_one_column = true,
+    wrap_focus = false,
+    wrap_swapcol = false,
+  },
+})
 -- accel_profile =     # flat or adaptive or blank or EMPTY means libinput’s default mode
 -- Unconverted block line:   touchpad {
 hl.config({
@@ -115,7 +123,8 @@ hl.config({
 hl.config({
   binds = {
     workspace_back_and_forth = true,
-    allow_workspace_cycles = true,
+    allow_workspace_cycles = false,
+    window_direction_monitor_fallback = false,
     pass_mouse_when_bound = false,
 }
 })

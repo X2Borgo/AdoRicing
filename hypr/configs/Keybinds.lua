@@ -88,10 +88,10 @@ keybind("ALT_L + SHIFT_L", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Keybo
 keybind("SHIFT_L + ALT_L", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Tak0-Per-Window-Switch.sh"), { locked = true, desc = "switch keyboard layout per-window" })
 keybind((vars["mainMod"] or "") .. " ALT + C", hl.dsp.exec_cmd((vars["UserScripts"] or "") .. "/RofiCalc.sh"), { desc = "calculator" })
 -- Move current workspaces to monitors (left right up or down)
-keybind((vars["mainMod"] or "") .. " CTRL + F9", hl.dsp.exec_raw("movecurrentworkspacetomonitor l"), { desc = "move workspace to left monitor" })
-keybind((vars["mainMod"] or "") .. " CTRL + F10", hl.dsp.exec_raw("movecurrentworkspacetomonitor r"), { desc = "move workspace to right monitor" })
-keybind((vars["mainMod"] or "") .. " CTRL + F11", hl.dsp.exec_raw("movecurrentworkspacetomonitor u"), { desc = "move workspace to up monitor" })
-keybind((vars["mainMod"] or "") .. " CTRL + F12", hl.dsp.exec_raw("movecurrentworkspacetomonitor d"), { desc = "move workspace to down monitor" })
+keybind((vars["mainMod"] or "") .. " CTRL + F9", hl.dsp.workspace.move({ monitor = "l" }), { desc = "move workspace to left monitor" })
+keybind((vars["mainMod"] or "") .. " CTRL + F10", hl.dsp.workspace.move({ monitor = "r" }), { desc = "move workspace to right monitor" })
+keybind((vars["mainMod"] or "") .. " CTRL + F11", hl.dsp.workspace.move({ monitor = "u" }), { desc = "move workspace to up monitor" })
+keybind((vars["mainMod"] or "") .. " CTRL + F12", hl.dsp.workspace.move({ monitor = "d" }), { desc = "move workspace to down monitor" })
 -- ### SYSTEM ####
 keybind("CTRL ALT + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"), { desc = "exit Hyprland" })
 keybind((vars["mainMod"] or "") .. " + Q", hl.dsp.window.close(), { desc = "close active window" })
@@ -172,10 +172,10 @@ keybind((vars["mainMod"] or "") .. " CTRL + H", hl.dsp.exec_raw("moveoutofgroup"
 -- bindd = $mainMod, right, focus right, exec, bash -c 'if hyprctl activewindow -j | jq -e "((.grouped | type) == \"boolean\") or (.address == (.grouped[-1] // empty))" >/dev/null 2>&1; then hyprctl dispatch movefocus r; else hyprctl dispatch changegroupactive f; fi'
 -- bindd = $mainMod, left, focus left, exec, bash -c 'if hyprctl activewindow -j | jq -e "((.grouped | type) == \"boolean\") or (.address == (.grouped[0] // empty))" >/dev/null 2>&1; then hyprctl dispatch movefocus l; else hyprctl dispatch changegroupactive b; fi'
 -- Move focus with mainMod + arrow keys
-keybind((vars["mainMod"] or "") .. " + left", hl.dsp.exec_raw("movefocus l"), { desc = "focus left" })
-keybind((vars["mainMod"] or "") .. " + right", hl.dsp.exec_raw("movefocus r"), { desc = "focus right" })
-keybind((vars["mainMod"] or "") .. " + up", hl.dsp.exec_raw("movefocus u"), { desc = "focus up" })
-keybind((vars["mainMod"] or "") .. " + down", hl.dsp.exec_raw("movefocus d"), { desc = "focus down" })
+keybind((vars["mainMod"] or "") .. " + left", hl.dsp.focus({ direction = "left" }), { desc = "focus left" })
+keybind((vars["mainMod"] or "") .. " + right", hl.dsp.focus({ direction = "right" }), { desc = "focus right" })
+keybind((vars["mainMod"] or "") .. " + up", hl.dsp.focus({ direction = "up" }), { desc = "focus up" })
+keybind((vars["mainMod"] or "") .. " + down", hl.dsp.focus({ direction = "down" }), { desc = "focus down" })
 -- Workspaces related
 keybind((vars["mainMod"] or "") .. " + tab", hl.dsp.focus({ workspace = "m+1" }), { desc = "next workspace" })
 keybind((vars["mainMod"] or "") .. " SHIFT + tab", hl.dsp.focus({ workspace = "m-1" }), { desc = "previous workspace" })
@@ -183,21 +183,21 @@ keybind((vars["mainMod"] or "") .. " SHIFT + tab", hl.dsp.focus({ workspace = "m
 keybind((vars["mainMod"] or "") .. " SHIFT + U", hl.dsp.window.move({ workspace = "special" }), { desc = "move to special workspace" })
 keybind((vars["mainMod"] or "") .. " + U", hl.dsp.workspace.toggle_special(), { desc = "toggle special workspace" })
 -- Workspace number binds are defined once in hyprland.lua using Hyprland 0.55's documented Lua API.
--- Move active window to a workspace silently mainMod + CTRL [0-9]
-keybind((vars["mainMod"] or "") .. " CTRL + code:10", hl.dsp.exec_raw("movetoworkspacesilent 1"), { desc = "move silently to workspace 1" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:11", hl.dsp.exec_raw("movetoworkspacesilent 2"), { desc = "move silently to workspace 2" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:12", hl.dsp.exec_raw("movetoworkspacesilent 3"), { desc = "move silently to workspace 3" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:13", hl.dsp.exec_raw("movetoworkspacesilent 4"), { desc = "move silently to workspace 4" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:14", hl.dsp.exec_raw("movetoworkspacesilent 5"), { desc = "move silently to workspace 5" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:15", hl.dsp.exec_raw("movetoworkspacesilent 6"), { desc = "move silently to workspace 6" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:16", hl.dsp.exec_raw("movetoworkspacesilent 7"), { desc = "move silently to workspace 7" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:17", hl.dsp.exec_raw("movetoworkspacesilent 8"), { desc = "move silently to workspace 8" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:18", hl.dsp.exec_raw("movetoworkspacesilent 9"), { desc = "move silently to workspace 9" })
-keybind((vars["mainMod"] or "") .. " CTRL + code:19", hl.dsp.exec_raw("movetoworkspacesilent 10"), { desc = "move silently to workspace 10" })
+-- Swap active workspace contents with a numbered workspace mainMod + CTRL [0-9]
+keybind((vars["mainMod"] or "") .. " CTRL + code:10", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 1"), { desc = "swap active workspace with workspace 1" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:11", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 2"), { desc = "swap active workspace with workspace 2" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:12", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 3"), { desc = "swap active workspace with workspace 3" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:13", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 4"), { desc = "swap active workspace with workspace 4" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:14", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 5"), { desc = "swap active workspace with workspace 5" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:15", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 6"), { desc = "swap active workspace with workspace 6" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:16", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 7"), { desc = "swap active workspace with workspace 7" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:17", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 8"), { desc = "swap active workspace with workspace 8" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:18", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 9"), { desc = "swap active workspace with workspace 9" })
+keybind((vars["mainMod"] or "") .. " CTRL + code:19", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SwapWorkspaceNumber.sh 10"), { desc = "swap active workspace with workspace 10" })
 keybind((vars["mainMod"] or "") .. " CTRL + bracketleft", hl.dsp.exec_raw("movetoworkspacesilent -1"), { desc = "move silently to previous workspace" })
 keybind((vars["mainMod"] or "") .. " CTRL + bracketright", hl.dsp.exec_raw("movetoworkspacesilent +1"), { desc = "move silently to next workspace" })
 -- Workspace scroll binds are defined once in hyprland.lua.
 -- Move/resize windows with mainMod + LMB/RMB and dragging
-keybind((vars["mainMod"] or "") .. " + mouse:272", hl.dsp.exec_raw("movewindow"), { drag = true, desc = "move window" })
-keybind((vars["mainMod"] or "") .. " + mouse:273", hl.dsp.exec_raw("resizewindow"), { drag = true, desc = "resize window" })
+keybind((vars["mainMod"] or "") .. " + mouse:272", hl.dsp.window.drag(), { mouse = true, desc = "move window" })
+keybind((vars["mainMod"] or "") .. " + mouse:273", hl.dsp.window.resize(), { mouse = true, desc = "resize window" })
 return true

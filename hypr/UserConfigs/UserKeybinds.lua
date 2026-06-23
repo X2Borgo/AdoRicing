@@ -46,11 +46,7 @@ vars["UserConfigs"] = home() .. "/.config/hypr/UserConfigs"
 -- Other the keybind search menu might not show it properly
 -- E.g.
 -- bindd = $mainMod, Z, My z app, exec APPNAME
--- Numpad shortcuts with NumLock off
-keybind((vars["mainMod"] or "") .. " + KP_End", hl.dsp.exec_cmd("kitty"), { desc = "open kitty from numpad 1" })
-keybind((vars["mainMod"] or "") .. " + KP_Down", hl.dsp.exec_cmd("zed"), { desc = "open zed from numpad 2" })
-keybind((vars["mainMod"] or "") .. " + KP_Next", hl.dsp.exec_cmd("/home/alborghi/.local/share/applications/downloaded/zen/zen"), { desc = "open zen from numpad 3" })
-keybind((vars["mainMod"] or "") .. " + KP_Left", hl.dsp.exec_cmd("dolphin"), { desc = "open thunar from numpad 4" })
+-- Numpad workspace binds are defined in hyprland.lua.
 -- For passthrough keyboard into a VM
 -- bind = $mainMod ALT, P, submap, passthru
 -- submap = passthru
@@ -64,4 +60,7 @@ keybind((vars["mainMod"] or "") .. " SHIFT + F1", hl.dsp.exec_raw("movetoworkspa
 keybind((vars["mainMod"] or "") .. " SHIFT + F2", hl.dsp.exec_raw("movetoworkspace name:drevia"), { desc = "move window to drevia workspace" })
 -- Clipboard-only area screenshot
 keybind((vars["mainMod"] or "") .. " + X", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/ScreenShot.sh --clip-area"), { desc = "screenshot area to clipboard" })
+-- Browser shortcuts: Zen is primary, Chrome is the fallback.
+keybind((vars["mainMod"] or "") .. " ALT + Z", hl.dsp.exec_cmd("zen-browser || zen || xdg-open \"https://\""), { desc = "open Zen browser" })
+keybind((vars["mainMod"] or "") .. " ALT + G", hl.dsp.exec_cmd("google-chrome-stable || google-chrome || xdg-open \"https://\""), { desc = "open Chrome fallback browser" })
 return true

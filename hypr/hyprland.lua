@@ -54,6 +54,30 @@ for workspace = 1, 10 do
   })
 end
 
+local keypad_workspace_keys = {
+  [1] = { "KP_1", "KP_End" },
+  [2] = { "KP_2", "KP_Down" },
+  [3] = { "KP_3", "KP_Next" },
+  [4] = { "KP_4", "KP_Left" },
+  [5] = { "KP_5", "KP_Begin" },
+  [6] = { "KP_6", "KP_Right" },
+  [7] = { "KP_7", "KP_Home" },
+  [8] = { "KP_8", "KP_Up" },
+  [9] = { "KP_9", "KP_Prior" },
+  [10] = { "KP_0", "KP_Insert" },
+}
+
+for workspace = 1, 10 do
+  for _, key in ipairs(keypad_workspace_keys[workspace]) do
+    hl.bind(mainMod .. " + " .. key, hl.dsp.focus({ workspace = workspace }), {
+      description = "workspace " .. workspace .. " from numpad",
+    })
+    hl.bind(mainMod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = workspace }), {
+      description = "move to workspace " .. workspace .. " from numpad",
+    })
+  end
+end
+
 hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }), {
   description = "next existing workspace",
 })
@@ -61,7 +85,8 @@ hl.bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }), {
   description = "previous existing workspace",
 })
 
-hl.env("LIBVA_DRIVER_NAME", "nvidia")
 hl.env("GBM_BACKEND", "nvidia-drm")
 hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 hl.env("XDG_SESSION_TYPE", "wayland")
+
+require("dms.cursor")

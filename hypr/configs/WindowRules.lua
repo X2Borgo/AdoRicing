@@ -33,13 +33,8 @@ end
 -- windowrule = match:tag multimedia*, workspace 9 silent
 -- TAGS - add apps under appropriate tag to use the same settings
 -- browser tags
-hl.window_rule({ match = { class = "^([Ff]irefox|org.mozilla.firefox|[Ff]irefox-esr|[Ff]irefox-bin)$" }, tag = "+browser" })
 hl.window_rule({ match = { class = "^([Gg]oogle-chrome(-beta|-dev|-unstable)?)$" }, tag = "+browser" })
 hl.window_rule({ match = { class = "^(chrome-.+-Default)$" }, tag = "+browser" })
-hl.window_rule({ match = { class = "^([Cc]hromium)$" }, tag = "+browser" })
-hl.window_rule({ match = { class = "^([Mm]icrosoft-edge(-stable|-beta|-dev|-unstable))$" }, tag = "+browser" })
-hl.window_rule({ match = { class = "^([Bb]rave-browser(-beta|-dev|-unstable)?)$" }, tag = "+browser" })
-hl.window_rule({ match = { class = "^([Tt]horium-browser|[Cc]achy-browser)$" }, tag = "+browser" })
 hl.window_rule({ match = { class = "^(zen-alpha|zen)$" }, tag = "+browser" })
 -- notif tags
 hl.window_rule({ match = { class = "^(swaync-control-center|swaync-notification-window|swaync-client|class)$" }, tag = "+notif" })

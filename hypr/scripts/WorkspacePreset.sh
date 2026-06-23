@@ -67,41 +67,24 @@ focus_window() {
 }
 
 open_browser_window() {
-  if require_command firefox; then
-    firefox --new-window about:blank >/dev/null 2>&1 &
-    return 0
-  fi
-  if require_command floorp; then
-    floorp --new-window about:blank >/dev/null 2>&1 &
-    return 0
-  fi
   if require_command zen-browser; then
     zen-browser --new-window about:blank >/dev/null 2>&1 &
     return 0
   fi
-  if require_command brave-browser; then
-    brave-browser --new-window about:blank >/dev/null 2>&1 &
+  if require_command zen; then
+    zen --new-window about:blank >/dev/null 2>&1 &
+    return 0
+  fi
+  if require_command google-chrome-stable; then
+    google-chrome-stable --new-window about:blank >/dev/null 2>&1 &
     return 0
   fi
   if require_command google-chrome; then
     google-chrome --new-window about:blank >/dev/null 2>&1 &
     return 0
   fi
-  if require_command chromium; then
-    chromium --new-window about:blank >/dev/null 2>&1 &
-    return 0
-  fi
 
   xdg-open about:blank >/dev/null 2>&1 &
-}
-
-open_floorp_window() {
-  if require_command floorp; then
-    floorp --new-window about:blank >/dev/null 2>&1 &
-    return 0
-  fi
-
-  open_browser_window
 }
 
 open_terminal_window() {
@@ -181,17 +164,17 @@ spawn_window() {
 seed_work_workspace() {
   local terminal_addr
   local editor_addr
-  local floorp_addr
+  local browser_addr
   local secondary_monitor
 
   terminal_addr="$(spawn_window work open_terminal_window "$WORK_PROJECT_DIR")"
   editor_addr="$(spawn_window work open_editor_window "$WORK_PROJECT_DIR")"
-  floorp_addr="$(spawn_window work open_floorp_window)"
+  browser_addr="$(spawn_window work open_browser_window)"
 
   # On multi-monitor setups, keep the first two on the current (main) monitor
   # and move the third one to the secondary monitor.
   secondary_monitor="$(get_secondary_monitor)"
-  move_window_to_monitor "$floorp_addr" "$secondary_monitor"
+  move_window_to_monitor "$browser_addr" "$secondary_monitor"
 
   focus_window "$terminal_addr"
   focus_window "$editor_addr"

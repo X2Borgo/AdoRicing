@@ -7,6 +7,8 @@ applications
 .*
 !**.zshrc
 !.gitignore
+!.luarc.json
+!hypr/.luarc.json
 terminal/kitty/ikitty
 
 .gemini/
