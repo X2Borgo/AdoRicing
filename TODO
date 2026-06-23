@@ -27,7 +27,6 @@
 
 - [ ] Full Quickshell setup beyond the current panel
 - [ ] Quickshell asset packaging and startup helpers
-- [ ] Floorp browser theme/customization
 - [ ] GRUB bootloader theme
 - [ ] Plymouth boot splash screen
 - [ ] GTK theme for cross-toolkit consistency
