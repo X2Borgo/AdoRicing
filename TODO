@@ -18,6 +18,7 @@
 
 ## Current Priorities
 
+- [x] Add Gmail to App Inbox after deployment status integration
 - [ ] Refine monitor profiles and workspace defaults for common setups
 - [ ] Hypridle tuning for laptop vs desktop presets
 - [ ] Mako notification theme
