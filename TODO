@@ -21,7 +21,7 @@
 - [x] Add Gmail to App Inbox after deployment status integration
 - [ ] Refine monitor profiles and workspace defaults for common setups
 - [ ] Hypridle tuning for laptop vs desktop presets
-- [ ] Mako notification theme
+- [x] Mako notification theme (fallback daemon for the Waybar path; DMS owns notifications otherwise)
 - [ ] Wallpaper / monitor layout presets for Hyprland
 
 ## Secondary Work

@@ -103,6 +103,7 @@ INSTALL_ZSH=false
 INSTALL_FASTFETCH=false
 INSTALL_KATE=false
 INSTALL_ROFI=false
+INSTALL_MAKO=false
 INSTALL_ZED=false
 INSTALL_FONTS=false
 INSTALL_CAELESTIA_SHELL=false
@@ -117,6 +118,7 @@ if [ $# -eq 0 ]; then
     INSTALL_ZSH=true
     INSTALL_FASTFETCH=true
     INSTALL_ROFI=true
+    INSTALL_MAKO=true
     INSTALL_ZED=true
     INSTALL_FONTS=true
     INSTALL_CAELESTIA_SHELL=true
@@ -131,6 +133,7 @@ else
             --fastfetch) INSTALL_FASTFETCH=true ;;
             --kate) INSTALL_KATE=true ;;
             --rofi) INSTALL_ROFI=true ;;
+            --mako) INSTALL_MAKO=true ;;
             --zed) INSTALL_ZED=true ;;
             --fonts) INSTALL_FONTS=true ;;
             --caelestia-shell) INSTALL_CAELESTIA_SHELL=true ;;
@@ -145,6 +148,7 @@ else
                 INSTALL_FASTFETCH=true
                 INSTALL_KATE=true
                 INSTALL_ROFI=true
+                INSTALL_MAKO=true
                 INSTALL_ZED=true
                 INSTALL_FONTS=true
                 INSTALL_CAELESTIA_SHELL=true
@@ -159,6 +163,7 @@ else
                 INSTALL_ZSH=true
                 INSTALL_FASTFETCH=true
                 INSTALL_ROFI=true
+                INSTALL_MAKO=true
                 INSTALL_ZED=true
                 INSTALL_FONTS=true
                 INSTALL_CAELESTIA_SHELL=true
@@ -181,6 +186,7 @@ else
                 echo "  --fastfetch   Install Fastfetch configuration"
                 echo "  --kate        Install Kate/KWrite theme"
                 echo "  --rofi        Install Rofi configuration"
+                echo "  --mako        Install Mako notification theme (Waybar fallback daemon)"
                 echo "  --zed         Install Zed themes and settings"
                 echo "  --fonts       Install JetBrainsMono Nerd Font"
                 echo "  --caelestia-shell Link local shell/ repo to ~/.config/quickshell/caelestia"
@@ -371,6 +377,18 @@ if [ "$INSTALL_ROFI" = true ]; then
 
     echo -e "${GREEN}Rofi configuration installed${NC}"
     append_component "Rofi"
+fi
+
+if [ "$INSTALL_MAKO" = true ]; then
+    echo -e "\n${MAGENTA}Installing Mako notification theme...${NC}"
+    install_package "mako-notifier"
+
+    # Mako is only the fallback notification daemon: LaunchShell.sh starts it
+    # alongside Waybar and kills it when DMS (which owns notifications) runs.
+    link_file "$SCRIPT_DIR/mako/config" "$HOME/.config/mako/config"
+
+    echo -e "${GREEN}Mako notification theme installed${NC}"
+    append_component "Mako"
 fi
 
 if [ "$INSTALL_ZED" = true ]; then

@@ -27,7 +27,7 @@ A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "H
 
 ### Wayland Shell Layer
 - **DankMaterialShell (DMS)** as the primary top bar / desktop shell, started by `hypr/scripts/LaunchShell.sh` (`dms run --daemon`)
-- **Waybar** automatic fallback if `dms` is missing or fails to start
+- **Waybar** automatic fallback if `dms` is missing or fails to start, with **Mako** (Ado-themed, `mako/config`) as the fallback notification daemon — DMS owns notifications whenever it runs, so `LaunchShell.sh` starts mako only alongside Waybar and kills it when DMS comes up
 - A complete `hypr/` config tree (Lua-based, Hyprland 0.55+ Lua API) installed into `~/.config/hypr`
 - DMS integration files in `hypr/dms/` (colors, layout, cursor, window rules)
 - `dms-plugins/` — a `DockerLauncher` plugin for DMS
@@ -113,6 +113,7 @@ Steps that still generate files or run imperatively rather than linking: package
 ./install.sh --zsh
 ./install.sh --fastfetch
 ./install.sh --rofi
+./install.sh --mako            # Mako notification theme (Waybar-fallback daemon)
 ./install.sh --zed
 ./install.sh --fonts
 ./install.sh --kate             # Legacy Kate/KWrite theme
