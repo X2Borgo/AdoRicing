@@ -117,8 +117,8 @@ function ado_display() {
 }
 
 # --- 1. INITIALIZE TOOLS ---
-# Run Fastfetch on startup
-# ado_display
+# Run Fastfetch on startup (the pre-symlink live ~/.zshrc had this enabled)
+ado_display
 
 function set_win_title(){
     echo -ne "\033]0; WORLD ADOMINATION \007"
