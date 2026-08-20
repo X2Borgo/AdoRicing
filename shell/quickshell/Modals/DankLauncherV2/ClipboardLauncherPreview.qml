@@ -10,10 +10,11 @@ Rectangle {
 
     property var entry: null
     property string cachedImageData: ""
+    property string cachedMimeType: ""
     property var _requestedEntryId: null
 
-    readonly property bool canLoadImage: !!entry?.isImage && (entry?.mimeType ?? "").startsWith("image/")
-    readonly property string sourceUrl: cachedImageData.length > 0 ? "data:" + (entry?.mimeType ?? "image/png") + ";base64," + cachedImageData : ""
+    readonly property bool canLoadImage: typeof entry?.id === "number" && !!entry?.isImage && String(entry?.mimeType ?? "").startsWith("image/")
+    readonly property string sourceUrl: resolvedSourceUrl(cachedImageData, cachedMimeType || (entry?.mimeType ?? ""))
 
     radius: Math.max(6, Theme.cornerRadius - 2)
     clip: true
@@ -24,13 +25,34 @@ Rectangle {
     onEntryChanged: reloadPreview()
     Component.onCompleted: reloadPreview()
 
+    function isImageMimeType(mimeType) {
+        return (mimeType || "").toString().toLowerCase().startsWith("image/");
+    }
+
+    function resolvedSourceUrl(data, mimeType) {
+        const rawData = (data || "").toString();
+        if (rawData.length === 0)
+            return "";
+        if (rawData.startsWith("data:"))
+            return rawData.startsWith("data:image/") ? rawData : "";
+        if (!isImageMimeType(mimeType))
+            return "";
+        return "data:" + mimeType + ";base64," + rawData;
+    }
+
     function reloadPreview() {
-        cachedImageData = "";
-        if (!canLoadImage || !entry?.id) {
+        if (!canLoadImage || typeof entry?.id !== "number") {
             _requestedEntryId = null;
+            cachedImageData = "";
+            cachedMimeType = "";
             return;
         }
+        // Entry objects are rebuilt per search; same id means same content
+        if (entry.id === _requestedEntryId)
+            return;
 
+        cachedImageData = "";
+        cachedMimeType = "";
         const entryId = entry.id;
         _requestedEntryId = entryId;
         DMSService.sendRequest("clipboard.getEntry", {
@@ -38,11 +60,24 @@ Rectangle {
         }, function (response) {
             if (_requestedEntryId !== entryId)
                 return;
-            if (response.error)
+            if (response.error) {
+                _requestedEntryId = null;
                 return;
-            const data = response.result?.data ?? "";
-            if (data.length > 0)
-                cachedImageData = data;
+            }
+            if (!response.result) {
+                _requestedEntryId = null;
+                ClipboardService.refresh();
+                return;
+            }
+            const result = response.result;
+            const mimeType = (result.mimeType ?? entry?.mimeType ?? "").toString();
+            const data = (result.data ?? "").toString();
+            if (data.length === 0 || !resolvedSourceUrl(data, mimeType)) {
+                _requestedEntryId = null;
+                return;
+            }
+            cachedMimeType = mimeType;
+            cachedImageData = data;
         });
     }
 
@@ -53,6 +88,8 @@ Rectangle {
         asynchronous: true
         cache: false
         smooth: true
+        sourceSize.width: 128
+        sourceSize.height: 128
         fillMode: Image.PreserveAspectCrop
         visible: status === Image.Ready
     }

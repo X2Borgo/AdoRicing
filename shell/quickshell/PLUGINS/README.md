@@ -557,7 +557,7 @@ PluginService.pluginWidgetComponents: object
 PluginService.loadPlugin(pluginId: string): bool
 PluginService.unloadPlugin(pluginId: string): bool
 PluginService.reloadPlugin(pluginId: string): bool
-PluginService.enablePlugin(pluginId: string): bool
+PluginService.enablePlugin(pluginId: string, onResult?: (ok: bool, error: string) => void): bool
 PluginService.disablePlugin(pluginId: string): bool
 
 // Plugin Discovery
@@ -584,6 +584,41 @@ PluginService.pluginUnloaded(pluginId: string)
 PluginService.pluginLoadFailed(pluginId: string, error: string)
 PluginService.globalVarChanged(pluginId: string, varName: string)
 ```
+
+## Startup Check (Dependency Gate)
+
+A plugin may optionally gate activation behind a dependency check. Point the manifest's `startupCheck` field at a small, **non-visual** component (a `QtObject` - it must not render in the graphics scene):
+
+```json
+{
+    "startupCheck": "./StartupCheck.qml",
+    "dependencies": ["boregard"]
+}
+```
+
+The component exposes a `check` function that runs before the plugin loads, both on manual enable and on auto-load at startup. Call `done(null)` to allow activation, or `done(error)` to block it. The error can be a short string (title only) or an object with an expandable `details` body for long-form instructions:
+
+```qml
+import QtQuick
+import qs.Common
+
+QtObject {
+    function check(done) {
+        Proc.runCommand("myPlugin.depCheck", ["which", "boregard"], (stdout, exitCode) => {
+            if (exitCode === 0) {
+                done(null)
+                return
+            }
+            done({
+                title: I18n.tr("boregard is required"),
+                details: I18n.tr("Install it from https://danklinux.com, then re-enable this plugin.")
+            })
+        })
+    }
+}
+```
+
+A synchronous variant is supported too - declare `check()` with no argument and return the result directly. When the check fails the enable toggle reverts and the error is shown as a toast (the `details` are expandable, and any `http(s)` URL in them becomes a clickable link). Plugins without a `startupCheck` are unaffected. See `ExampleStartupCheck` for a complete plugin; the last error per plugin is available at `PluginService.pluginLoadErrors[pluginId]`.
 
 ## Plugin Global Variables
 
@@ -1635,6 +1670,79 @@ See `PLUGINS/ExampleDesktopClock/` for a complete working example demonstrating:
 - Responsive sizing
 - Edit mode handling
 
+## Composite Plugins
+
+A single plugin can provide **multiple surfaces at once** — for example a background
+daemon (for IPC / monitoring), a bar widget, and a desktop widget. Because each surface
+has a different lifecycle (the daemon is instantiated once; bar and desktop widgets are
+instantiated per bar/placement per screen), each surface is its own QML file.
+
+### Plugin Type Configuration
+
+Instead of a single `type` + `component`, declare a `components` map. Set `type` to
+`composite` (any value works; `composite` is conventional):
+
+```json
+{
+    "id": "myComposite",
+    "name": "My Composite Plugin",
+    "description": "A daemon plus a bar widget plus a desktop widget",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "type": "composite",
+    "capabilities": ["daemon", "dankbar-widget", "desktop-widget"],
+    "components": {
+        "daemon":   "./MyDaemon.qml",
+        "widget":   "./MyBarWidget.qml",
+        "desktop":  "./MyDesktopWidget.qml",
+        "launcher": "./MyLauncher.qml"
+    },
+    "trigger": "#",
+    "settings": "./MySettings.qml",
+    "requires_dms": ">=1.5.0",
+    "permissions": ["settings_read", "settings_write"]
+}
+```
+
+### Surfaces
+
+Provide any subset of these keys in `components`:
+
+| Surface | Component contract | Notes |
+|---------|--------------------|-------|
+| `widget` | `PluginComponent` (bar pills + optional Control Center widget) | see [Widget Component](#widget-component) |
+| `desktop` | `DesktopPluginComponent` (or an `Item` following the desktop contract) | see [Desktop Plugins](#desktop-plugins) |
+| `daemon` | any `Item` exposing `pluginService` / `pluginId` | instantiated once; ideal for IPC handlers and background monitoring |
+| `launcher` | launcher contract (`getItems` / `executeItem`) | requires `trigger` (or empty-trigger mode); see [Launcher Plugins](#launcher-plugins) |
+
+Each surface is loaded independently into its own registry, so the same plugin can show
+up in the bar **and** on the desktop **and** run a daemon simultaneously.
+
+### Shared State
+
+Each surface is a separate object, so share runtime state through:
+
+- `PluginService.getGlobalVar(pluginId, name, default)` / `setGlobalVar(...)` — reactive,
+  in-process, namespaced per plugin (see [Plugin Global Variables](#plugin-global-variables)).
+- The daemon instance — register `IpcHandler`s or expose data other surfaces read via
+  global vars.
+- `savePluginData` / `loadPluginData` for persisted settings (all surfaces of a plugin
+  share one settings namespace, so one `settings` component configures them all).
+
+### Settings, Enabling, and Backwards Compatibility
+
+- Declare a single top-level `settings` component; it configures every surface.
+- Composite plugins respect the **enable toggle** in Settings → Plugins (they are not
+  auto-loaded). A pure `desktop` plugin still auto-loads for backwards compatibility.
+- The legacy single `type` + `component` form is unchanged and fully supported — it is
+  treated internally as a one-entry `components` map.
+
+### Example Plugin
+
+See `PLUGINS/ExampleCompositePlugin/` for a working composite that combines the
+WallpaperWatcher daemon, the Emoji Cycler bar widget, and the Desktop Clock into one
+plugin.
+
 ## Resources
 
 - **Plugin Schema**: `plugin-schema.json` - JSON Schema for validation
@@ -1644,6 +1752,7 @@ See `PLUGINS/ExampleDesktopClock/` for a complete working example demonstrating:
   - [LauncherExample](./LauncherExample/)
   - [Calculator](https://github.com/rochacbruno/DankCalculator)
   - [Desktop Clock](./ExampleDesktopClock/)
+  - [Composite Example](./ExampleCompositePlugin/)
 - **PluginService**: `Services/PluginService.qml`
 - **Settings UI**: `Modules/Settings/PluginsTab.qml`
 - **DankBar Integration**: `Modules/DankBar/DankBar.qml`

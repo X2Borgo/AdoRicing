@@ -534,7 +534,7 @@ BasePill {
                 visible: isSeparator
                 width: root.isVerticalOrientation ? root.barThickness * 0.6 : 2
                 height: root.isVerticalOrientation ? 2 : root.barThickness * 0.6
-                color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                color: Theme.outlineHeavy
                 radius: 1
                 anchors.centerIn: parent
             }
@@ -631,7 +631,7 @@ BasePill {
                         if (appItem.isFocused && colorizeEnabled) {
                             return mouseArea.containsMouse ? Theme.withAlpha(Qt.lighter(appItem.activeOverlayColor, 1.3), 0.4) : Theme.withAlpha(appItem.activeOverlayColor, 0.3);
                         }
-                        return mouseArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : "transparent";
+                        return mouseArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0);
                     }
 
                     border.width: dragHandler.dragging ? 2 : 0
@@ -933,19 +933,17 @@ BasePill {
                         tooltipLoader.active = true;
                         if (tooltipLoader.item) {
                             if (root.isVerticalOrientation) {
-                                const globalPos = delegateItem.mapToGlobal(0, delegateItem.height / 2);
-                                const screenX = root.parentScreen ? root.parentScreen.x : 0;
-                                const screenY = root.parentScreen ? root.parentScreen.y : 0;
+                                const localPos = delegateItem.mapToItem(null, 0, delegateItem.height / 2);
                                 const isLeft = root.axis?.edge === "left";
                                 const tooltipX = isLeft ? (root.barThickness + root.barSpacing + Theme.spacingXS) : (root.parentScreen.width - root.barThickness - root.barSpacing - Theme.spacingXS);
-                                const screenRelativeY = globalPos.y - screenY + root.minTooltipY;
-                                tooltipLoader.item.show(appItem.tooltipText, screenX + tooltipX, screenRelativeY, root.parentScreen, isLeft, !isLeft);
+                                const screenRelativeY = localPos.y + root.minTooltipY;
+                                tooltipLoader.item.show(appItem.tooltipText, tooltipX, screenRelativeY, root.parentScreen, isLeft, !isLeft);
                             } else {
-                                const globalPos = delegateItem.mapToGlobal(delegateItem.width / 2, delegateItem.height);
+                                const localPos = delegateItem.mapToItem(null, delegateItem.width / 2, delegateItem.height);
                                 const screenHeight = root.parentScreen ? root.parentScreen.height : Screen.height;
                                 const isBottom = root.axis?.edge === "bottom";
                                 const tooltipY = isBottom ? (screenHeight - root.barThickness - root.barSpacing - Theme.spacingXS - 35) : (root.barThickness + root.barSpacing + Theme.spacingXS);
-                                tooltipLoader.item.show(appItem.tooltipText, globalPos.x, tooltipY, root.parentScreen, false, false);
+                                tooltipLoader.item.show(appItem.tooltipText, localPos.x, tooltipY, root.parentScreen, false, false);
                             }
                         }
                     }
@@ -967,14 +965,12 @@ BasePill {
                             contextMenuLoader.active = true;
 
                             if (contextMenuLoader.item) {
-                                const globalPos = delegateItem.mapToGlobal(delegateItem.width / 2, delegateItem.height / 2);
-                                const screenX = root.parentScreen ? root.parentScreen.x : 0;
-                                const screenY = root.parentScreen ? root.parentScreen.y : 0;
+                                const localPos = delegateItem.mapToItem(null, delegateItem.width / 2, delegateItem.height / 2);
                                 const isBarVertical = root.axis?.isVertical ?? false;
                                 const barEdge = root.axis?.edge ?? "top";
 
-                                let x = globalPos.x - screenX;
-                                let y = globalPos.y - screenY;
+                                let x = localPos.x;
+                                let y = localPos.y;
 
                                 switch (barEdge) {
                                 case "bottom":

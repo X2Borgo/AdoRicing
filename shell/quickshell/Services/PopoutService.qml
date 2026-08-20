@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Common
+import qs.Services
 
 Singleton {
     id: root
@@ -34,7 +35,10 @@ Singleton {
     property var clipboardHistoryModal: null
     property var dankLauncherV2Modal: null
     property var dankLauncherV2ModalLoader: null
+    property var spotlightBarModal: null
+    property var spotlightBarModalLoader: null
     property var powerMenuModal: null
+    property var powerMenuModalLoader: null
     property var processListModal: null
     property var processListModalLoader: null
     property var colorPickerModal: null
@@ -48,11 +52,72 @@ Singleton {
     property var bluetoothPairingModal: null
     property var networkInfoModal: null
     property var windowRuleModalLoader: null
+    property var powerProfileModal: null
+    property var powerProfileModalLoader: null
 
     property var notepadSlideouts: []
 
     property string pendingThemeInstall: ""
     property string pendingPluginInstall: ""
+
+    // Deferred unload: keep popouts warm while the session is active and reclaim them on lock/monitors-off.
+    property var _pendingUnloads: ({})
+
+    Connections {
+        target: SessionService
+        function onSessionLocked() {
+            root._flushPendingUnloads();
+        }
+    }
+
+    Connections {
+        target: IdleService
+        function onMonitorsOffChanged() {
+            if (IdleService.monitorsOff)
+                root._flushPendingUnloads();
+        }
+    }
+
+    function _scheduleUnload(key) {
+        _pendingUnloads[key] = true;
+    }
+
+    function _flushPendingUnloads() {
+        const keys = Object.keys(_pendingUnloads);
+        _pendingUnloads = ({});
+        for (let i = 0; i < keys.length; i++) {
+            const unload = _deferredUnloaders[keys[i]];
+            if (unload)
+                unload();
+        }
+    }
+
+    function _popoutStillPresented(popout) {
+        return !!popout && (popout.shouldBeVisible === true || popout.isClosing === true);
+    }
+
+    function _unloadPopoutNow(popoutName, loaderName) {
+        const loader = root[loaderName];
+        if (!loader)
+            return;
+        if (_popoutStillPresented(root[popoutName]))
+            return;
+        root[popoutName] = null;
+        loader.active = false;
+    }
+
+    readonly property var _deferredUnloaders: ({
+            "controlCenter": () => _unloadPopoutNow("controlCenterPopout", "controlCenterLoader"),
+            "notificationCenter": () => _unloadPopoutNow("notificationCenterPopout", "notificationCenterLoader"),
+            "appDrawer": () => _unloadPopoutNow("appDrawerPopout", "appDrawerLoader"),
+            "processList": () => _unloadPopoutNow("processListPopout", "processListPopoutLoader"),
+            "battery": () => _unloadPopoutNow("batteryPopout", "batteryPopoutLoader"),
+            "vpn": () => _unloadPopoutNow("vpnPopout", "vpnPopoutLoader"),
+            "systemUpdate": () => _unloadPopoutNow("systemUpdatePopout", "systemUpdateLoader"),
+            "layout": () => _unloadPopoutNow("layoutPopout", "layoutPopoutLoader"),
+            "clipboardHistory": () => _unloadPopoutNow("clipboardHistoryPopout", "clipboardHistoryPopoutLoader"),
+            "settings": () => _unloadSettingsNow()
+        })
 
     function setPosition(popout, x, y, width, section, screen) {
         if (popout && popout.setTriggerPosition && arguments.length >= 6) {
@@ -72,10 +137,7 @@ Singleton {
     }
 
     function unloadControlCenter() {
-        if (!controlCenterLoader)
-            return;
-        controlCenterPopout = null;
-        controlCenterLoader.active = false;
+        _scheduleUnload("controlCenter");
     }
 
     function toggleControlCenter(x, y, width, section, screen) {
@@ -97,10 +159,7 @@ Singleton {
     }
 
     function unloadNotificationCenter() {
-        if (!notificationCenterLoader)
-            return;
-        notificationCenterPopout = null;
-        notificationCenterLoader.active = false;
+        _scheduleUnload("notificationCenter");
     }
 
     function toggleNotificationCenter(x, y, width, section, screen) {
@@ -122,10 +181,7 @@ Singleton {
     }
 
     function unloadAppDrawer() {
-        if (!appDrawerLoader)
-            return;
-        appDrawerPopout = null;
-        appDrawerLoader.active = false;
+        _scheduleUnload("appDrawer");
     }
 
     function toggleAppDrawer(x, y, width, section, screen) {
@@ -147,10 +203,7 @@ Singleton {
     }
 
     function unloadProcessListPopout() {
-        if (!processListPopoutLoader)
-            return;
-        processListPopout = null;
-        processListPopoutLoader.active = false;
+        _scheduleUnload("processList");
     }
 
     function toggleProcessList(x, y, width, section, screen) {
@@ -162,7 +215,7 @@ Singleton {
 
     property bool _dankDashWantsOpen: false
     property bool _dankDashWantsToggle: false
-    property int _dankDashPendingTab: 0
+    property var _dankDashPendingTab: 0
     property real _dankDashPendingX: 0
     property real _dankDashPendingY: 0
     property real _dankDashPendingWidth: 0
@@ -179,12 +232,21 @@ Singleton {
         _dankDashHasPosition = hasPos;
     }
 
-    function openDankDash(tabIndex, x, y, width, section, screen) {
-        _dankDashPendingTab = tabIndex || 0;
+    // `tab` is a view id ("weather"); a numeric index into the visible tabs is
+    // still accepted for plugin compatibility.
+    function _dankDashTabId(tab) {
+        if (typeof tab === "string" && tab !== "")
+            return tab;
+        const ids = SettingsData.visibleDashTabIds();
+        return ids[typeof tab === "number" ? tab : 0] ?? "overview";
+    }
+
+    function openDankDash(tab, x, y, width, section, screen) {
+        _dankDashPendingTab = tab || 0;
         if (dankDashPopout) {
             if (arguments.length >= 6)
                 setPosition(dankDashPopout, x, y, width, section, screen);
-            dankDashPopout.currentTabIndex = _dankDashPendingTab;
+            dankDashPopout.requestTab(_dankDashTabId(_dankDashPendingTab));
             dankDashPopout.dashVisible = true;
             return;
         }
@@ -207,15 +269,15 @@ Singleton {
         // bindings while Qt is still unwinding the signal stack.
     }
 
-    function toggleDankDash(tabIndex, x, y, width, section, screen) {
-        _dankDashPendingTab = tabIndex || 0;
+    function toggleDankDash(tab, x, y, width, section, screen) {
+        _dankDashPendingTab = tab || 0;
         if (dankDashPopout) {
             if (arguments.length >= 6)
                 setPosition(dankDashPopout, x, y, width, section, screen);
             if (dankDashPopout.dashVisible) {
                 dankDashPopout.dashVisible = false;
             } else {
-                dankDashPopout.currentTabIndex = _dankDashPendingTab;
+                dankDashPopout.requestTab(_dankDashTabId(_dankDashPendingTab));
                 dankDashPopout.dashVisible = true;
             }
             return;
@@ -237,7 +299,7 @@ Singleton {
 
         if (_dankDashWantsOpen) {
             _dankDashWantsOpen = false;
-            dankDashPopout.currentTabIndex = _dankDashPendingTab;
+            dankDashPopout.requestTab(_dankDashTabId(_dankDashPendingTab));
             dankDashPopout.dashVisible = true;
             return;
         }
@@ -246,7 +308,7 @@ Singleton {
             if (dankDashPopout.dashVisible) {
                 dankDashPopout.dashVisible = false;
             } else {
-                dankDashPopout.currentTabIndex = _dankDashPendingTab;
+                dankDashPopout.requestTab(_dankDashTabId(_dankDashPendingTab));
                 dankDashPopout.dashVisible = true;
             }
         }
@@ -264,10 +326,7 @@ Singleton {
     }
 
     function unloadBattery() {
-        if (!batteryPopoutLoader)
-            return;
-        batteryPopout = null;
-        batteryPopoutLoader.active = false;
+        _scheduleUnload("battery");
     }
 
     function toggleBattery(x, y, width, section, screen) {
@@ -289,10 +348,7 @@ Singleton {
     }
 
     function unloadVpn() {
-        if (!vpnPopoutLoader)
-            return;
-        vpnPopout = null;
-        vpnPopoutLoader.active = false;
+        _scheduleUnload("vpn");
     }
 
     function toggleVpn(x, y, width, section, screen) {
@@ -315,10 +371,7 @@ Singleton {
     }
 
     function unloadSystemUpdate() {
-        if (!systemUpdateLoader)
-            return;
-        systemUpdatePopout = null;
-        systemUpdateLoader.active = false;
+        _scheduleUnload("systemUpdate");
     }
 
     function toggleSystemUpdate(x, y, width, section, screen) {
@@ -372,7 +425,7 @@ Singleton {
     }
 
     function closeSettings() {
-        settingsModal?.close();
+        settingsModal?.hide();
     }
 
     function toggleSettings() {
@@ -388,8 +441,7 @@ Singleton {
     function toggleSettingsWithTab(tabName: string) {
         if (settingsModal) {
             var idx = settingsModal.resolveTabIndex(tabName);
-            if (idx >= 0)
-                settingsModal.currentTabIndex = idx;
+            settingsModal.setTabIndex(idx);
             settingsModal.toggle();
             return;
         }
@@ -429,8 +481,7 @@ Singleton {
                     return;
                 }
                 var idx = settingsModal.resolveTabIndex(tabName);
-                if (idx >= 0)
-                    settingsModal.currentTabIndex = idx;
+                settingsModal.setTabIndex(idx);
                 toplevel.activate();
                 return;
             }
@@ -439,10 +490,16 @@ Singleton {
     }
 
     function unloadSettings() {
-        if (settingsModalLoader) {
-            settingsModal = null;
-            settingsModalLoader.active = false;
-        }
+        _scheduleUnload("settings");
+    }
+
+    function _unloadSettingsNow() {
+        if (!settingsModalLoader)
+            return;
+        if (settingsModal && settingsModal.visible)
+            return;
+        settingsModal = null;
+        settingsModalLoader.active = false;
     }
 
     function _onSettingsModalLoaded() {
@@ -462,12 +519,11 @@ Singleton {
         if (_settingsWantsToggle) {
             _settingsWantsToggle = false;
             if (_settingsPendingTabIndex >= 0) {
-                settingsModal.currentTabIndex = _settingsPendingTabIndex;
+                settingsModal?.setTabIndex(_settingsPendingTabIndex);
                 _settingsPendingTabIndex = -1;
             } else if (_settingsPendingTab) {
                 var idx = settingsModal?.resolveTabIndex(_settingsPendingTab) ?? -1;
-                if (idx >= 0)
-                    settingsModal.currentTabIndex = idx;
+                settingsModal?.setTabIndex(idx);
                 _settingsPendingTab = "";
             }
             settingsModal?.toggle();
@@ -479,29 +535,42 @@ Singleton {
     }
 
     function closeClipboardHistory() {
-        clipboardHistoryModal?.close();
+        clipboardHistoryModal?.hide();
     }
 
     function unloadClipboardHistoryPopout() {
-        if (!clipboardHistoryPopoutLoader)
-            return;
-        clipboardHistoryPopout = null;
-        clipboardHistoryPopoutLoader.active = false;
+        _scheduleUnload("clipboardHistory");
     }
 
     function unloadLayoutPopout() {
-        if (!layoutPopoutLoader)
-            return;
-        layoutPopout = null;
-        layoutPopoutLoader.active = false;
+        _scheduleUnload("layout");
     }
 
     property bool _dankLauncherV2WantsOpen: false
     property bool _dankLauncherV2WantsToggle: false
     property string _dankLauncherV2PendingQuery: ""
     property string _dankLauncherV2PendingMode: ""
+    property bool _dankLauncherV2TriggerUsesOverlayLayer: false
+    property bool _dankLauncherV2EdgeHoverManaged: false
 
-    function openDankLauncherV2() {
+    function _setDankLauncherV2TriggerUsesOverlayLayer(value) {
+        _dankLauncherV2TriggerUsesOverlayLayer = value === true;
+        // Disable edge-hover by default on every open/toggle path unless explicitly enabled.
+        _setDankLauncherV2EdgeHoverManaged(false);
+        if (dankLauncherV2Modal)
+            dankLauncherV2Modal.triggerUsesOverlayLayer = _dankLauncherV2TriggerUsesOverlayLayer;
+    }
+
+    // Set edgeHoverManaged to enable hover retraction for edge-hover triggered launcher sessions.
+    function _setDankLauncherV2EdgeHoverManaged(value) {
+        _dankLauncherV2EdgeHoverManaged = value === true;
+        if (dankLauncherV2Modal)
+            dankLauncherV2Modal.edgeHoverManaged = _dankLauncherV2EdgeHoverManaged;
+    }
+
+    function openDankLauncherV2(triggerUsesOverlayLayer, edgeHoverManaged) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
+        _setDankLauncherV2EdgeHoverManaged(edgeHoverManaged);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.show();
         } else if (dankLauncherV2ModalLoader) {
@@ -511,7 +580,8 @@ Singleton {
         }
     }
 
-    function openDankLauncherV2WithQuery(query: string) {
+    function openDankLauncherV2WithQuery(query: string, triggerUsesOverlayLayer) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.showWithQuery(query);
         } else if (dankLauncherV2ModalLoader) {
@@ -522,7 +592,8 @@ Singleton {
         }
     }
 
-    function openDankLauncherV2WithMode(mode: string) {
+    function openDankLauncherV2WithMode(mode: string, triggerUsesOverlayLayer) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.showWithMode(mode);
         } else if (dankLauncherV2ModalLoader) {
@@ -544,7 +615,8 @@ Singleton {
         }
     }
 
-    function toggleDankLauncherV2() {
+    function toggleDankLauncherV2(triggerUsesOverlayLayer) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.toggle();
         } else if (dankLauncherV2ModalLoader) {
@@ -554,7 +626,8 @@ Singleton {
         }
     }
 
-    function toggleDankLauncherV2WithMode(mode: string) {
+    function toggleDankLauncherV2WithMode(mode: string, triggerUsesOverlayLayer) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.toggleWithMode(mode);
         } else if (dankLauncherV2ModalLoader) {
@@ -565,7 +638,8 @@ Singleton {
         }
     }
 
-    function toggleDankLauncherV2WithQuery(query: string) {
+    function toggleDankLauncherV2WithQuery(query: string, triggerUsesOverlayLayer) {
+        _setDankLauncherV2TriggerUsesOverlayLayer(triggerUsesOverlayLayer);
         if (dankLauncherV2Modal) {
             dankLauncherV2Modal.toggleWithQuery(query);
         } else if (dankLauncherV2ModalLoader) {
@@ -577,6 +651,10 @@ Singleton {
     }
 
     function _onDankLauncherV2ModalLoaded() {
+        if (dankLauncherV2Modal) {
+            dankLauncherV2Modal.triggerUsesOverlayLayer = _dankLauncherV2TriggerUsesOverlayLayer;
+            dankLauncherV2Modal.edgeHoverManaged = _dankLauncherV2EdgeHoverManaged;
+        }
         if (_dankLauncherV2WantsOpen) {
             _dankLauncherV2WantsOpen = false;
             if (_dankLauncherV2PendingQuery) {
@@ -601,6 +679,104 @@ Singleton {
         }
     }
 
+    property bool _spotlightBarWantsOpen: false
+    property bool _spotlightBarWantsToggle: false
+    property string _spotlightBarPendingQuery: ""
+    property string _spotlightBarPendingMode: ""
+
+    function openSpotlightBar() {
+        if (spotlightBarModal) {
+            spotlightBarModal.show();
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarWantsOpen = true;
+            _spotlightBarWantsToggle = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function openSpotlightBarWithQuery(query: string) {
+        if (spotlightBarModal) {
+            spotlightBarModal.showWithQuery(query);
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarPendingQuery = query;
+            _spotlightBarWantsOpen = true;
+            _spotlightBarWantsToggle = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function openSpotlightBarWithMode(mode: string) {
+        if (spotlightBarModal) {
+            spotlightBarModal.showWithMode(mode);
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarPendingMode = mode;
+            _spotlightBarWantsOpen = true;
+            _spotlightBarWantsToggle = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function closeSpotlightBar() {
+        spotlightBarModal?.hide();
+    }
+
+    function toggleSpotlightBar() {
+        if (spotlightBarModal) {
+            spotlightBarModal.toggle();
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarWantsToggle = true;
+            _spotlightBarWantsOpen = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function toggleSpotlightBarWithMode(mode: string) {
+        if (spotlightBarModal) {
+            spotlightBarModal.toggleWithMode(mode);
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarPendingMode = mode;
+            _spotlightBarWantsToggle = true;
+            _spotlightBarWantsOpen = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function toggleSpotlightBarWithQuery(query: string) {
+        if (spotlightBarModal) {
+            spotlightBarModal.toggleWithQuery(query);
+        } else if (spotlightBarModalLoader) {
+            _spotlightBarPendingQuery = query;
+            _spotlightBarWantsOpen = true;
+            _spotlightBarWantsToggle = false;
+            spotlightBarModalLoader.active = true;
+        }
+    }
+
+    function _onSpotlightBarModalLoaded() {
+        if (_spotlightBarWantsOpen) {
+            _spotlightBarWantsOpen = false;
+            if (_spotlightBarPendingQuery) {
+                spotlightBarModal?.showWithQuery(_spotlightBarPendingQuery);
+                _spotlightBarPendingQuery = "";
+            } else if (_spotlightBarPendingMode) {
+                spotlightBarModal?.showWithMode(_spotlightBarPendingMode);
+                _spotlightBarPendingMode = "";
+            } else {
+                spotlightBarModal?.show();
+            }
+            return;
+        }
+        if (_spotlightBarWantsToggle) {
+            _spotlightBarWantsToggle = false;
+            if (_spotlightBarPendingMode) {
+                spotlightBarModal?.toggleWithMode(_spotlightBarPendingMode);
+                _spotlightBarPendingMode = "";
+            } else {
+                spotlightBarModal?.toggle();
+            }
+        }
+    }
+
     function openPowerMenu() {
         powerMenuModal?.openCentered();
     }
@@ -616,6 +792,40 @@ Singleton {
             } else {
                 powerMenuModal.openCentered();
             }
+        }
+    }
+
+    function openPowerProfileModal() {
+        if (powerProfileModal) {
+            powerProfileModal.openCentered();
+        } else if (powerProfileModalLoader) {
+            powerProfileModalLoader.active = true;
+            Qt.callLater(() => powerProfileModal?.openCentered());
+        }
+    }
+
+    function closePowerProfileModal() {
+        powerProfileModal?.close();
+    }
+
+    function togglePowerProfileModal() {
+        if (powerProfileModal) {
+            if (powerProfileModal.shouldBeVisible) {
+                powerProfileModal.close();
+            } else {
+                powerProfileModal.openCentered();
+            }
+        } else if (powerProfileModalLoader) {
+            powerProfileModalLoader.active = true;
+            Qt.callLater(() => {
+                if (powerProfileModal) {
+                    if (powerProfileModal.shouldBeVisible) {
+                        powerProfileModal.close();
+                    } else {
+                        powerProfileModal.openCentered();
+                    }
+                }
+            });
         }
     }
 
@@ -667,8 +877,11 @@ Singleton {
     function showWifiPasswordModal(ssid) {
         if (wifiPasswordModalLoader)
             wifiPasswordModalLoader.active = true;
-        if (wifiPasswordModal)
+        if (wifiPasswordModal) {
             wifiPasswordModal.show(ssid);
+        } else {
+            Qt.callLater(() => wifiPasswordModal?.show(ssid));
+        }
     }
 
     function showWifiQRCodeModal(ssid) {
@@ -681,8 +894,11 @@ Singleton {
     function showHiddenNetworkModal() {
         if (wifiPasswordModalLoader)
             wifiPasswordModalLoader.active = true;
-        if (wifiPasswordModal)
+        if (wifiPasswordModal) {
             wifiPasswordModal.showHidden();
+        } else {
+            Qt.callLater(() => wifiPasswordModal?.showHidden());
+        }
     }
 
     function hideWifiPasswordModal() {
@@ -697,21 +913,135 @@ Singleton {
         networkInfoModal?.close();
     }
 
-    function openNotepad() {
-        if (notepadSlideouts.length > 0) {
-            notepadSlideouts[0]?.show();
+    function closeNotepadSlideouts() {
+        for (var i = 0; i < notepadSlideouts.length; i++) {
+            if (notepadSlideouts[i] && notepadSlideouts[i].isVisible)
+                notepadSlideouts[i].hide();
         }
     }
 
-    function closeNotepad() {
+    function notepadSlideoutForFocusedScreen() {
+        if (!notepadSlideouts || notepadSlideouts.length === 0)
+            return null;
+        const focused = BarWidgetService.getFocusedScreenName();
+        if (focused) {
+            for (var i = 0; i < notepadSlideouts.length; i++) {
+                if (notepadSlideouts[i]?.modelData?.name === focused)
+                    return notepadSlideouts[i];
+            }
+        }
+        return notepadSlideouts[0];
+    }
+
+    // Remembered presentation wins over the configured default until the user
+    // changes the default in settings (handled below).
+    readonly property string notepadResolvedMode: SessionData.notepadLastMode || SettingsData.notepadDefaultMode
+
+    function openNotepadSlideout() {
+        SessionData.setNotepadLastMode("slideout");
+        notepadPopout?.hide();
         if (notepadSlideouts.length > 0) {
-            notepadSlideouts[0]?.hide();
+            notepadSlideoutForFocusedScreen()?.show();
+        }
+    }
+
+    // Keep the notepad in a single presentation for default modes
+    Connections {
+        target: SettingsData
+        function onNotepadDefaultModeChanged() {
+            SessionData.setNotepadLastMode(SettingsData.notepadDefaultMode);
+            if (SettingsData.notepadDefaultMode === "popout") {
+                var hadSlideout = false;
+                for (var i = 0; i < root.notepadSlideouts.length; i++) {
+                    if (root.notepadSlideouts[i] && root.notepadSlideouts[i].isVisible) {
+                        hadSlideout = true;
+                        root.notepadSlideouts[i].hide();
+                    }
+                }
+                if (hadSlideout)
+                    root.openNotepadPopout();
+            } else if (root.notepadPopout && root.notepadPopout.visible) {
+                root.notepadPopout.hide();
+                root.openNotepadSlideout();
+            }
+        }
+    }
+
+    function openNotepad() {
+        if (notepadResolvedMode === "popout") {
+            openNotepadPopout();
+            return;
+        }
+        openNotepadSlideout();
+    }
+
+    function closeNotepad() {
+        if (notepadResolvedMode === "popout") {
+            notepadPopout?.hide();
+            return;
+        }
+        if (notepadSlideouts.length > 0) {
+            notepadSlideoutForFocusedScreen()?.hide();
         }
     }
 
     function toggleNotepad() {
+        if (notepadResolvedMode === "popout") {
+            toggleNotepadPopout();
+            return;
+        }
         if (notepadSlideouts.length > 0) {
-            notepadSlideouts[0]?.toggle();
+            notepadSlideoutForFocusedScreen()?.toggle();
+        }
+    }
+
+    property var notepadPopout: null
+    property var notepadPopoutLoader: null
+    property bool _notepadPopoutWantsOpen: false
+    property string _notepadPendingOpenFilePath: ""
+
+    function openNotepadPopout() {
+        SessionData.setNotepadLastMode("popout");
+        closeNotepadSlideouts();
+        if (notepadPopout) {
+            notepadPopout.show();
+        } else if (notepadPopoutLoader) {
+            _notepadPopoutWantsOpen = true;
+            notepadPopoutLoader.active = true;
+        }
+    }
+
+    function openNotepadPopoutWithFile(path) {
+        closeNotepadSlideouts();
+        if (notepadPopout) {
+            notepadPopout.show();
+            notepadPopout.notepad?.openExternalFile(path);
+        } else if (notepadPopoutLoader) {
+            _notepadPendingOpenFilePath = path;
+            _notepadPopoutWantsOpen = true;
+            notepadPopoutLoader.active = true;
+        }
+    }
+
+    function _onNotepadPopoutLoaded() {
+        if (_notepadPopoutWantsOpen && notepadPopout) {
+            _notepadPopoutWantsOpen = false;
+            notepadPopout.show();
+            if (_notepadPendingOpenFilePath) {
+                const pendingPath = _notepadPendingOpenFilePath;
+                _notepadPendingOpenFilePath = "";
+                notepadPopout.notepad?.openExternalFile(pendingPath);
+            }
+        }
+    }
+
+    function toggleNotepadPopout() {
+        if (notepadPopout) {
+            if (!notepadPopout.visible)
+                closeNotepadSlideouts();
+            notepadPopout.toggle();
+        } else {
+            openNotepadPopout();
         }
     }
 }

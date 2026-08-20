@@ -77,7 +77,7 @@ Rectangle {
             height: Theme.iconSize + Theme.spacingS * 2
             anchors.verticalCenter: parent.verticalCenter
             radius: (Theme.iconSize + Theme.spacingS * 2) / 2
-            color: iconArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : "transparent"
+            color: iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primaryHover, 0)
 
             DankRipple {
                 id: iconRipple
@@ -159,7 +159,7 @@ Rectangle {
         }
 
         function getPinnedInputs() {
-            const pins = SettingsData.audioInputDevicePins || {};
+            const pins = CacheData.audioInputDevicePins || {};
             return normalizePinList(pins["preferredInput"]);
         }
 
@@ -273,13 +273,13 @@ Rectangle {
                         radius: height / 2
                         color: {
                             const isThisDevicePinned = audioContent.getPinnedInputs().includes(modelData.name);
-                            return isThisDevicePinned ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Theme.withAlpha(Theme.surfaceText, 0.05);
+                            return isThisDevicePinned ? Theme.primaryHover : Theme.withAlpha(Theme.surfaceText, 0.05);
                         }
 
                         Row {
                             id: pinInputRow
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: Theme.spacingXS
 
                             DankIcon {
                                 name: "push_pin"
@@ -315,7 +315,7 @@ Rectangle {
                             cursorShape: Qt.PointingHandCursor
                             onPressed: mouse => pinRipple.trigger(mouse.x, mouse.y)
                             onClicked: {
-                                const pins = JSON.parse(JSON.stringify(SettingsData.audioInputDevicePins || {}));
+                                const pins = JSON.parse(JSON.stringify(CacheData.audioInputDevicePins || {}));
                                 let pinnedList = audioContent.normalizePinList(pins["preferredInput"]);
                                 const pinIndex = pinnedList.indexOf(modelData.name);
 
@@ -332,7 +332,7 @@ Rectangle {
                                 else
                                     delete pins["preferredInput"];
 
-                                SettingsData.set("audioInputDevicePins", pins);
+                                CacheData.set("audioInputDevicePins", pins);
                             }
                         }
                     }

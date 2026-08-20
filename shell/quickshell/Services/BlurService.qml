@@ -15,8 +15,9 @@ Singleton {
     readonly property bool available: compositorSupported
     readonly property bool enabled: available && (SettingsData.blurEnabled ?? false)
 
+    // These settings predate non-blurred surface borders, so keep their keys for compatibility.
     readonly property color borderColor: {
-        if (!enabled)
+        if (!(SettingsData.blurBorderEnabled ?? true))
             return "transparent";
         const opacity = SettingsData.blurBorderOpacity ?? 0.35;
         switch (SettingsData.blurBorderColor ?? "outline") {
@@ -27,12 +28,12 @@ Singleton {
         case "surfaceText":
             return Theme.withAlpha(Theme.surfaceText, opacity);
         case "custom":
-            return Theme.withAlpha(SettingsData.blurBorderCustomColor ?? "#ffffff", opacity);
+            return Theme.withAlpha(Qt.color(SettingsData.blurBorderCustomColor ?? "#ffffff"), opacity);
         default:
             return Theme.withAlpha(Theme.outline, opacity);
         }
     }
-    readonly property int borderWidth: enabled ? 1 : 0
+    readonly property int borderWidth: (SettingsData.blurBorderEnabled ?? true) ? 1 : 0
 
     function hoverColor(baseColor, hoverAlpha) {
         if (!enabled)

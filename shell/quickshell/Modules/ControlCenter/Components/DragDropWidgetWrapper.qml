@@ -21,6 +21,7 @@ Item {
     signal widgetMoved(int fromIndex, int toIndex)
     signal removeWidget(int index)
     signal toggleWidgetSize(int index)
+    signal configRequested(int index, var widgetData, var anchor)
 
     width: {
         const widgetWidth = widgetData?.width || 50;
@@ -236,6 +237,7 @@ Item {
     }
 
     Rectangle {
+        id: removeButton
         width: 16
         height: 16
         radius: 8
@@ -278,6 +280,34 @@ Item {
         }
     }
 
+    readonly property bool hasConfigMenu: widgetData?.id === "diskUsage"
+
+    Rectangle {
+        id: configButton
+        width: 16
+        height: 16
+        radius: 8
+        color: Theme.primary
+        anchors.top: removeButton.top
+        anchors.right: removeButton.left
+        anchors.rightMargin: 4
+        visible: editMode && root.hasConfigMenu
+        z: 10
+
+        DankIcon {
+            anchors.centerIn: parent
+            name: "settings"
+            size: 12
+            color: Theme.primaryText
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.configRequested(root.widgetIndex, root.widgetData, configButton)
+        }
+    }
+
     Rectangle {
         id: dragHandle
         width: 16
@@ -307,7 +337,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: editMode ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
+        color: editMode ? Theme.primaryHoverLight : Theme.withAlpha(Theme.primaryHoverLight, 0)
         radius: Theme.cornerRadius
         border.color: "transparent"
         border.width: 0

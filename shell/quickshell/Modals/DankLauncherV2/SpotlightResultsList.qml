@@ -12,6 +12,7 @@ Item {
     property var controller: null
     property bool hasQuery: false
     property var rows: []
+    readonly property real bottomInset: Theme.spacingS
 
     signal itemRightClicked(int index, var item, real mouseX, real mouseY)
 
@@ -53,9 +54,14 @@ Item {
 
     DankListView {
         id: mainListView
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.bottomInset
         clip: true
         visible: root.rows.length > 0
+        add: null
 
         readonly property int rowHeight: 64
 
@@ -63,11 +69,6 @@ Item {
             values: root.rows
             objectProp: "_rowId"
         }
-
-        add: null
-        remove: null
-        displaced: null
-        move: null
 
         delegate: Item {
             id: delegateRoot
@@ -103,7 +104,11 @@ Item {
     }
 
     Item {
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.bottomInset
         visible: root.hasQuery && root.rows.length === 0
 
         Row {
@@ -139,7 +144,7 @@ Item {
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(420, root.width - 88)
-                spacing: 2
+                spacing: Theme.spacingXXS
 
                 StyledText {
                     width: parent.width

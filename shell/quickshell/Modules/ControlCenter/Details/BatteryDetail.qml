@@ -24,14 +24,13 @@ Rectangle {
     }
 
     function setProfile(profile) {
-        if (typeof PowerProfiles === "undefined") {
-            ToastService.showError(I18n.tr("power-profiles-daemon not available"));
+        if (PowerProfileWatcher.applyProfile(profile))
             return;
-        }
-        PowerProfiles.profile = profile;
-        if (PowerProfiles.profile !== profile) {
+
+        if (!PowerProfileWatcher.available)
+            ToastService.showError(I18n.tr("power-profiles-daemon not available"));
+        else
             ToastService.showError(I18n.tr("Failed to set power profile"));
-        }
     }
 
     Column {
@@ -193,7 +192,7 @@ Rectangle {
         }
 
         DankButtonGroup {
-            property var profileModel: (typeof PowerProfiles !== "undefined") ? [PowerProfile.PowerSaver, PowerProfile.Balanced].concat(PowerProfiles.hasPerformanceProfile ? [PowerProfile.Performance] : []) : [PowerProfile.PowerSaver, PowerProfile.Balanced, PowerProfile.Performance]
+            property var profileModel: PowerProfileWatcher.availableProfiles
             property int currentProfileIndex: {
                 if (typeof PowerProfiles === "undefined")
                     return 1;
@@ -215,8 +214,8 @@ Rectangle {
             width: parent.width
             height: degradationContent.implicitHeight + Theme.spacingL * 2
             radius: Theme.cornerRadius
-            color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.12)
-            border.color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3)
+            color: Theme.errorHover
+            border.color: Theme.errorSelected
             border.width: 0
             visible: (typeof PowerProfiles !== "undefined") && PowerProfiles.degradationReason !== PerformanceDegradationReason.None
 
@@ -254,7 +253,7 @@ Rectangle {
                         StyledText {
                             text: (typeof PowerProfiles !== "undefined") ? PerformanceDegradationReason.toString(PowerProfiles.degradationReason) : ""
                             font.pixelSize: Theme.fontSizeSmall
-                            color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.8)
+                            color: Theme.withAlpha(Theme.error, 0.8)
                             wrapMode: Text.WordWrap
                             width: parent.width
                             horizontalAlignment: Text.AlignLeft

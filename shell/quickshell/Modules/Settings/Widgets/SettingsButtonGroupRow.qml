@@ -64,6 +64,8 @@ Item {
 
     property alias model: buttonGroup.model
     property alias currentIndex: buttonGroup.currentIndex
+    property alias initialSelection: buttonGroup.initialSelection
+    property alias currentSelection: buttonGroup.currentSelection
     property alias selectionMode: buttonGroup.selectionMode
     property alias buttonHeight: buttonGroup.buttonHeight
     property alias minButtonWidth: buttonGroup.minButtonWidth
@@ -76,7 +78,7 @@ Item {
     signal selectionChanged(int index, bool selected)
 
     width: parent?.width ?? 0
-    height: 60
+    height: Math.max(60, textColumn.implicitHeight + Theme.spacingM * 2)
 
     Row {
         id: contentRow
@@ -86,6 +88,7 @@ Item {
         spacing: Theme.spacingM
 
         Column {
+            id: textColumn
             width: parent.width - buttonGroup.width - Theme.spacingM
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.spacingXS

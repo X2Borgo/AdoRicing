@@ -46,7 +46,7 @@ Item {
             },
             {
                 "id": "osd",
-                "name": I18n.tr("On-Screen Displays"),
+                "name": I18n.tr("On-screen Displays"),
                 "description": I18n.tr("Volume, brightness, and other system OSDs"),
                 "icon": "picture_in_picture"
             },
@@ -137,7 +137,7 @@ Item {
                 height: screensInfoSection.implicitHeight + Theme.spacingL * 2
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainerHigh
-                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                border.color: Theme.outlineHeavy
                 border.width: 0
 
                 Column {
@@ -250,7 +250,7 @@ Item {
                                 height: screenRow.implicitHeight + Theme.spacingS * 2
                                 radius: Theme.cornerRadius
                                 color: Theme.surfaceContainerHigh
-                                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                border.color: Theme.outlineHeavy
                                 border.width: 0
 
                                 Row {
@@ -331,7 +331,7 @@ Item {
                         height: componentSection.implicitHeight + Theme.spacingL * 2
                         radius: Theme.cornerRadius
                         color: Theme.surfaceContainerHigh
-                        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                        border.color: Theme.outlineHeavy
                         border.width: 0
 
                         Column {
@@ -419,7 +419,7 @@ Item {
 
                                     DankToggle {
                                         width: parent.width
-                                        text: I18n.tr("Focused monitor only")
+                                        text: I18n.tr("Focused Monitor Only")
                                         description: I18n.tr("Show notifications only on the currently focused monitor")
                                         visible: parent.componentId === "notifications"
                                         checked: SettingsData.notificationFocusedMonitor

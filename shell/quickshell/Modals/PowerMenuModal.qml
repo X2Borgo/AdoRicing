@@ -1,7 +1,6 @@
 import QtQuick
-import QtQuick.Effects
 import Quickshell
-import Quickshell.Hyprland
+import Quickshell.Widgets
 import qs.Common
 import qs.Modals.Common
 import qs.Services
@@ -12,11 +11,7 @@ DankModal {
 
     layerNamespace: "dms:power-menu"
     keepPopoutsOpen: true
-
-    HyprlandFocusGrab {
-        windows: [root.contentWindow]
-        active: root.useHyprlandFocusGrab && root.shouldHaveFocus
-    }
+    useOverlayLayer: true
 
     property int selectedIndex: 0
     property int selectedRow: 0
@@ -31,6 +26,8 @@ DankModal {
     property int holdActionIndex: -1
     property real holdProgress: 0
     property bool showHoldHint: false
+    property bool holdFromKeyboard: false
+    property string committedAction: ""
 
     readonly property bool needsConfirmation: SettingsData.powerActionConfirm
     readonly property int holdDurationMs: SettingsData.powerActionHoldDuration * 1000
@@ -42,8 +39,18 @@ DankModal {
         return action !== "lock" && action !== "restart";
     }
 
+    function actionWakesOnKeyRelease(action) {
+        return action === "suspend" || action === "hibernate";
+    }
+
     function startHold(action, actionIndex) {
+        if (committedAction !== "")
+            return;
         if (!needsConfirmation || !actionNeedsConfirm(action)) {
+            if (holdFromKeyboard && actionWakesOnKeyRelease(action)) {
+                commitAction(action, actionIndex);
+                return;
+            }
             executeAction(action);
             return;
         }
@@ -73,13 +80,38 @@ DankModal {
             cancelHold();
             return;
         }
-        const action = holdAction;
         holdTimer.stop();
+        if (holdFromKeyboard && actionWakesOnKeyRelease(holdAction)) {
+            commitAction(holdAction, holdActionIndex);
+            return;
+        }
+        const action = holdAction;
         holdAction = "";
         holdActionIndex = -1;
         holdProgress = 0;
         executeAction(action);
     }
+
+    function commitAction(action, actionIndex) {
+        holdTimer.stop();
+        holdAction = "";
+        holdActionIndex = actionIndex;
+        committedAction = action;
+        commitFallbackTimer.restart();
+    }
+
+    function executeCommittedAction() {
+        if (committedAction === "")
+            return;
+        commitFallbackTimer.stop();
+        const action = committedAction;
+        committedAction = "";
+        holdActionIndex = -1;
+        holdProgress = 0;
+        executeAction(action);
+    }
+
+    signal switchUserRequested
 
     function executeAction(action) {
         if (action === "lock") {
@@ -90,6 +122,11 @@ DankModal {
         if (action === "restart") {
             close();
             Quickshell.execDetached(["dms", "restart"]);
+            return;
+        }
+        if (action === "switchuser") {
+            close();
+            switchUserRequested();
             return;
         }
         close();
@@ -113,6 +150,12 @@ DankModal {
         id: hintTimer
         interval: 2000
         onTriggered: root.showHoldHint = false
+    }
+
+    Timer {
+        id: commitFallbackTimer
+        interval: 5000
+        onTriggered: root.executeCommittedAction()
     }
 
     function openCentered() {
@@ -216,6 +259,12 @@ DankModal {
                 "label": I18n.tr("Restart DMS"),
                 "key": "D"
             };
+        case "switchuser":
+            return {
+                "icon": "switch_account",
+                "label": I18n.tr("Switch User"),
+                "key": "U"
+            };
         default:
             return {
                 "icon": "help",
@@ -266,6 +315,9 @@ DankModal {
         holdActionIndex = -1;
         holdProgress = 0;
         showHoldHint = false;
+        holdFromKeyboard = false;
+        committedAction = "";
+        commitFallbackTimer.stop();
         updateVisibleActions();
         const defaultIndex = getDefaultActionIndex();
         selectedIndex = defaultIndex;
@@ -288,6 +340,11 @@ DankModal {
             event.accepted = true;
             return;
         }
+        if (committedAction !== "") {
+            event.accepted = true;
+            return;
+        }
+        holdFromKeyboard = true;
         if (SettingsData.powerMenuGridLayout) {
             handleGridNavigation(event, true);
         } else {
@@ -297,6 +354,11 @@ DankModal {
     modalFocusScope.Keys.onReleased: event => {
         if (event.isAutoRepeat) {
             event.accepted = true;
+            return;
+        }
+        if (committedAction !== "") {
+            event.accepted = true;
+            executeCommittedAction();
             return;
         }
         if (SettingsData.powerMenuGridLayout) {
@@ -339,9 +401,11 @@ DankModal {
             break;
         case Qt.Key_P:
             if (!(event.modifiers & Qt.ControlModifier)) {
-                const idx = visibleActions.indexOf("poweroff");
-                startHold("poweroff", idx);
-                event.accepted = true;
+                if (visibleActions.includes("poweroff")) {
+                    const idx = visibleActions.indexOf("poweroff");
+                    startHold("poweroff", idx);
+                    event.accepted = true;
+                }
             } else {
                 selectedIndex = (selectedIndex - 1 + visibleActions.length) % visibleActions.length;
                 event.accepted = true;
@@ -360,28 +424,40 @@ DankModal {
             }
             break;
         case Qt.Key_R:
-            startHold("reboot", visibleActions.indexOf("reboot"));
-            event.accepted = true;
+            if (visibleActions.includes("reboot")) {
+                startHold("reboot", visibleActions.indexOf("reboot"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_X:
-            startHold("logout", visibleActions.indexOf("logout"));
-            event.accepted = true;
+            if (visibleActions.includes("logout")) {
+                startHold("logout", visibleActions.indexOf("logout"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_L:
-            startHold("lock", visibleActions.indexOf("lock"));
-            event.accepted = true;
+            if (visibleActions.includes("lock")) {
+                startHold("lock", visibleActions.indexOf("lock"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_S:
-            startHold("suspend", visibleActions.indexOf("suspend"));
-            event.accepted = true;
+            if (visibleActions.includes("suspend")) {
+                startHold("suspend", visibleActions.indexOf("suspend"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_H:
-            startHold("hibernate", visibleActions.indexOf("hibernate"));
-            event.accepted = true;
+            if (visibleActions.includes("hibernate")) {
+                startHold("hibernate", visibleActions.indexOf("hibernate"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_D:
-            startHold("restart", visibleActions.indexOf("restart"));
-            event.accepted = true;
+            if (visibleActions.includes("restart")) {
+                startHold("restart", visibleActions.indexOf("restart"));
+                event.accepted = true;
+            }
             break;
         }
     }
@@ -432,9 +508,11 @@ DankModal {
             break;
         case Qt.Key_P:
             if (!(event.modifiers & Qt.ControlModifier)) {
-                const idx = visibleActions.indexOf("poweroff");
-                startHold("poweroff", idx);
-                event.accepted = true;
+                if (visibleActions.includes("poweroff")) {
+                    const idx = visibleActions.indexOf("poweroff");
+                    startHold("poweroff", idx);
+                    event.accepted = true;
+                }
             } else {
                 selectedCol = (selectedCol - 1 + gridColumns) % gridColumns;
                 selectedIndex = selectedRow * gridColumns + selectedCol;
@@ -456,28 +534,40 @@ DankModal {
             }
             break;
         case Qt.Key_R:
-            startHold("reboot", visibleActions.indexOf("reboot"));
-            event.accepted = true;
+            if (visibleActions.includes("reboot")) {
+                startHold("reboot", visibleActions.indexOf("reboot"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_X:
-            startHold("logout", visibleActions.indexOf("logout"));
-            event.accepted = true;
+            if (visibleActions.includes("logout")) {
+                startHold("logout", visibleActions.indexOf("logout"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_L:
-            startHold("lock", visibleActions.indexOf("lock"));
-            event.accepted = true;
+            if (visibleActions.includes("lock")) {
+                startHold("lock", visibleActions.indexOf("lock"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_S:
-            startHold("suspend", visibleActions.indexOf("suspend"));
-            event.accepted = true;
+            if (visibleActions.includes("suspend")) {
+                startHold("suspend", visibleActions.indexOf("suspend"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_H:
-            startHold("hibernate", visibleActions.indexOf("hibernate"));
-            event.accepted = true;
+            if (visibleActions.includes("hibernate")) {
+                startHold("hibernate", visibleActions.indexOf("hibernate"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_D:
-            startHold("restart", visibleActions.indexOf("restart"));
-            event.accepted = true;
+            if (visibleActions.includes("restart")) {
+                startHold("restart", visibleActions.indexOf("restart"));
+                event.accepted = true;
+            }
             break;
         }
     }
@@ -515,32 +605,19 @@ DankModal {
                         radius: Theme.cornerRadius
                         color: {
                             if (isSelected)
-                                return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12);
+                                return Theme.primaryHover;
                             if (mouseArea.containsMouse)
-                                return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08);
-                            return Qt.rgba(Theme.surfaceVariant.r, Theme.surfaceVariant.g, Theme.surfaceVariant.b, 0.08);
+                                return Theme.primaryHoverLight;
+                            return Theme.surfaceHover;
                         }
-                        border.color: isSelected ? Theme.primary : "transparent"
+                        border.color: isSelected ? Theme.primary : Theme.withAlpha(Theme.primary, 0)
                         border.width: isSelected ? 2 : 0
 
-                        Rectangle {
-                            id: gridProgressMask
+                        ClippingRectangle {
                             anchors.fill: parent
                             radius: parent.radius
-                            visible: false
-                            layer.enabled: true
-                        }
-
-                        Item {
-                            anchors.fill: parent
+                            color: "transparent"
                             visible: gridButtonRect.isHolding
-                            layer.enabled: gridButtonRect.isHolding
-                            layer.effect: MultiEffect {
-                                maskEnabled: true
-                                maskSource: gridProgressMask
-                                maskSpreadAtMin: 1
-                                maskThresholdMin: 0.5
-                            }
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -549,10 +626,10 @@ DankModal {
                                 width: parent.width * root.holdProgress
                                 color: {
                                     if (gridButtonRect.modelData === "poweroff")
-                                        return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3);
+                                        return Theme.errorSelected;
                                     if (gridButtonRect.modelData === "reboot")
-                                        return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3);
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3);
+                                        return Theme.withAlpha(Theme.warning, 0.3);
+                                    return Theme.primarySelected;
                                 }
                             }
                         }
@@ -590,13 +667,13 @@ DankModal {
                                 width: 20
                                 height: 16
                                 radius: 4
-                                color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.1)
+                                color: Theme.onSurface_12
                                 anchors.horizontalCenter: parent.horizontalCenter
 
                                 StyledText {
                                     text: gridButtonRect.actionData.key
                                     font.pixelSize: Theme.fontSizeSmall - 1
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                    color: Theme.surfaceTextSecondary
                                     font.weight: Font.Medium
                                     anchors.centerIn: parent
                                 }
@@ -609,6 +686,7 @@ DankModal {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onPressed: {
+                                root.holdFromKeyboard = false;
                                 root.selectedRow = Math.floor(index / root.gridColumns);
                                 root.selectedCol = index % root.gridColumns;
                                 root.selectedIndex = index;
@@ -652,32 +730,19 @@ DankModal {
                         radius: Theme.cornerRadius
                         color: {
                             if (isSelected)
-                                return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12);
+                                return Theme.primaryHover;
                             if (listMouseArea.containsMouse)
-                                return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08);
-                            return Qt.rgba(Theme.surfaceVariant.r, Theme.surfaceVariant.g, Theme.surfaceVariant.b, 0.08);
+                                return Theme.primaryHoverLight;
+                            return Theme.surfaceHover;
                         }
-                        border.color: isSelected ? Theme.primary : "transparent"
+                        border.color: isSelected ? Theme.primary : Theme.withAlpha(Theme.primary, 0)
                         border.width: isSelected ? 2 : 0
 
-                        Rectangle {
-                            id: listProgressMask
+                        ClippingRectangle {
                             anchors.fill: parent
                             radius: parent.radius
-                            visible: false
-                            layer.enabled: true
-                        }
-
-                        Item {
-                            anchors.fill: parent
+                            color: "transparent"
                             visible: listButtonRect.isHolding
-                            layer.enabled: listButtonRect.isHolding
-                            layer.effect: MultiEffect {
-                                maskEnabled: true
-                                maskSource: listProgressMask
-                                maskSpreadAtMin: 1
-                                maskThresholdMin: 0.5
-                            }
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -686,10 +751,10 @@ DankModal {
                                 width: parent.width * root.holdProgress
                                 color: {
                                     if (listButtonRect.modelData === "poweroff")
-                                        return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3);
+                                        return Theme.errorSelected;
                                     if (listButtonRect.modelData === "reboot")
-                                        return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3);
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3);
+                                        return Theme.withAlpha(Theme.warning, 0.3);
+                                    return Theme.primarySelected;
                                 }
                             }
                         }
@@ -734,7 +799,7 @@ DankModal {
                             width: 28
                             height: 20
                             radius: 4
-                            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.1)
+                            color: Theme.onSurface_12
                             anchors {
                                 right: parent.right
                                 rightMargin: Theme.spacingM
@@ -744,7 +809,7 @@ DankModal {
                             StyledText {
                                 text: listButtonRect.actionData.key
                                 font.pixelSize: Theme.fontSizeSmall
-                                color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                color: Theme.surfaceTextSecondary
                                 font.weight: Font.Medium
                                 anchors.centerIn: parent
                             }
@@ -756,6 +821,7 @@ DankModal {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onPressed: {
+                                root.holdFromKeyboard = false;
                                 root.selectedIndex = index;
                                 root.startHold(modelData, index);
                             }
@@ -768,6 +834,7 @@ DankModal {
 
             Row {
                 id: hintRow
+                readonly property bool selectedNeedsHold: root.actionNeedsConfirm(root.getActionAtIndex(root.selectedIndex))
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Theme.spacingS
@@ -782,9 +849,15 @@ DankModal {
                 }
 
                 DankIcon {
-                    name: root.showHoldHint ? "warning" : "touch_app"
+                    name: {
+                        if (root.showHoldHint)
+                            return "warning";
+                        if (!hintRow.selectedNeedsHold)
+                            return "bolt";
+                        return "touch_app";
+                    }
                     size: Theme.fontSizeSmall
-                    color: root.showHoldHint ? Theme.warning : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                    color: root.showHoldHint ? Theme.warning : Theme.surfaceTextSecondary
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -792,8 +865,12 @@ DankModal {
                     readonly property real totalMs: SettingsData.powerActionHoldDuration * 1000
                     readonly property int remainingMs: Math.ceil(totalMs * (1 - root.holdProgress))
                     text: {
+                        if (root.committedAction !== "")
+                            return I18n.tr("Release to confirm");
                         if (root.showHoldHint)
                             return I18n.tr("Hold longer to confirm");
+                        if (!hintRow.selectedNeedsHold)
+                            return I18n.tr("Activates immediately");
                         if (root.holdProgress > 0) {
                             if (totalMs < 1000)
                                 return I18n.tr("Hold to confirm (%1 ms)").arg(remainingMs);
@@ -804,7 +881,7 @@ DankModal {
                         return I18n.tr("Hold to confirm (%1s)").arg(SettingsData.powerActionHoldDuration);
                     }
                     font.pixelSize: Theme.fontSizeSmall
-                    color: root.showHoldHint ? Theme.warning : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                    color: root.showHoldHint ? Theme.warning : Theme.surfaceTextSecondary
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }

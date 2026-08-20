@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
+import Quickshell.Widgets
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -35,6 +35,8 @@ Rectangle {
     readonly property int holdDurationMs: (powerActionHoldDurationOverride !== undefined ? powerActionHoldDurationOverride : SettingsData.powerActionHoldDuration) * 1000
 
     signal closed
+
+    signal switchUserRequested
 
     function updateVisibleActions() {
         const allActions = powerMenuActionsOverride !== undefined ? powerMenuActionsOverride : ((typeof SettingsData !== "undefined" && SettingsData.powerMenuActions) ? SettingsData.powerMenuActions : ["logout", "suspend", "hibernate", "reboot", "poweroff"]);
@@ -128,6 +130,12 @@ Rectangle {
                 "label": I18n.tr("Hibernate"),
                 "key": "H"
             };
+        case "switchuser":
+            return {
+                "icon": "switch_account",
+                "label": I18n.tr("Switch User"),
+                "key": "U"
+            };
         default:
             return {
                 "icon": "help",
@@ -183,6 +191,11 @@ Rectangle {
     function executeAction(action) {
         if (!action)
             return;
+        if (action === "switchuser") {
+            hide();
+            switchUserRequested();
+            return;
+        }
         if (typeof SessionService === "undefined")
             return;
         hide();
@@ -266,9 +279,11 @@ Rectangle {
             break;
         case Qt.Key_P:
             if (!(event.modifiers & Qt.ControlModifier)) {
-                const idx = visibleActions.indexOf("poweroff");
-                startHold("poweroff", idx);
-                event.accepted = true;
+                if (visibleActions.includes("poweroff")) {
+                    const idx = visibleActions.indexOf("poweroff");
+                    startHold("poweroff", idx);
+                    event.accepted = true;
+                }
             } else {
                 selectedIndex = (selectedIndex - 1 + visibleActions.length) % visibleActions.length;
                 event.accepted = true;
@@ -287,20 +302,28 @@ Rectangle {
             }
             break;
         case Qt.Key_R:
-            startHold("reboot", visibleActions.indexOf("reboot"));
-            event.accepted = true;
+            if (visibleActions.includes("reboot")) {
+                startHold("reboot", visibleActions.indexOf("reboot"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_X:
-            startHold("logout", visibleActions.indexOf("logout"));
-            event.accepted = true;
+            if (visibleActions.includes("logout")) {
+                startHold("logout", visibleActions.indexOf("logout"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_S:
-            startHold("suspend", visibleActions.indexOf("suspend"));
-            event.accepted = true;
+            if (visibleActions.includes("suspend")) {
+                startHold("suspend", visibleActions.indexOf("suspend"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_H:
-            startHold("hibernate", visibleActions.indexOf("hibernate"));
-            event.accepted = true;
+            if (visibleActions.includes("hibernate")) {
+                startHold("hibernate", visibleActions.indexOf("hibernate"));
+                event.accepted = true;
+            }
             break;
         }
     }
@@ -351,9 +374,11 @@ Rectangle {
             break;
         case Qt.Key_P:
             if (!(event.modifiers & Qt.ControlModifier)) {
-                const idx = visibleActions.indexOf("poweroff");
-                startHold("poweroff", idx);
-                event.accepted = true;
+                if (visibleActions.includes("poweroff")) {
+                    const idx = visibleActions.indexOf("poweroff");
+                    startHold("poweroff", idx);
+                    event.accepted = true;
+                }
             } else {
                 selectedCol = (selectedCol - 1 + gridColumns) % gridColumns;
                 selectedIndex = selectedRow * gridColumns + selectedCol;
@@ -375,20 +400,28 @@ Rectangle {
             }
             break;
         case Qt.Key_R:
-            startHold("reboot", visibleActions.indexOf("reboot"));
-            event.accepted = true;
+            if (visibleActions.includes("reboot")) {
+                startHold("reboot", visibleActions.indexOf("reboot"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_X:
-            startHold("logout", visibleActions.indexOf("logout"));
-            event.accepted = true;
+            if (visibleActions.includes("logout")) {
+                startHold("logout", visibleActions.indexOf("logout"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_S:
-            startHold("suspend", visibleActions.indexOf("suspend"));
-            event.accepted = true;
+            if (visibleActions.includes("suspend")) {
+                startHold("suspend", visibleActions.indexOf("suspend"));
+                event.accepted = true;
+            }
             break;
         case Qt.Key_H:
-            startHold("hibernate", visibleActions.indexOf("hibernate"));
-            event.accepted = true;
+            if (visibleActions.includes("hibernate")) {
+                startHold("hibernate", visibleActions.indexOf("hibernate"));
+                event.accepted = true;
+            }
             break;
         }
     }
@@ -526,32 +559,19 @@ Rectangle {
                             radius: Theme.cornerRadius
                             color: {
                                 if (isSelected)
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12);
+                                    return Theme.primaryHover;
                                 if (mouseArea.containsMouse)
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08);
-                                return Qt.rgba(Theme.surfaceVariant.r, Theme.surfaceVariant.g, Theme.surfaceVariant.b, 0.08);
+                                    return Theme.primaryHoverLight;
+                                return Theme.surfaceHover;
                             }
-                            border.color: isSelected ? Theme.primary : "transparent"
+                            border.color: isSelected ? Theme.primary : Theme.withAlpha(Theme.primary, 0)
                             border.width: isSelected ? 2 : 0
 
-                            Rectangle {
-                                id: gridProgressMask
+                            ClippingRectangle {
                                 anchors.fill: parent
                                 radius: parent.radius
-                                visible: false
-                                layer.enabled: true
-                            }
-
-                            Item {
-                                anchors.fill: parent
+                                color: "transparent"
                                 visible: gridButtonRect.isHolding
-                                layer.enabled: gridButtonRect.isHolding
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: gridProgressMask
-                                    maskSpreadAtMin: 1
-                                    maskThresholdMin: 0.5
-                                }
 
                                 Rectangle {
                                     anchors.left: parent.left
@@ -560,10 +580,10 @@ Rectangle {
                                     width: parent.width * root.holdProgress
                                     color: {
                                         if (gridButtonRect.modelData === "poweroff")
-                                            return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3);
+                                            return Theme.errorSelected;
                                         if (gridButtonRect.modelData === "reboot")
-                                            return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3);
-                                        return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3);
+                                            return Theme.withAlpha(Theme.warning, 0.3);
+                                        return Theme.primarySelected;
                                     }
                                 }
                             }
@@ -601,13 +621,13 @@ Rectangle {
                                     width: 20
                                     height: 16
                                     radius: 4
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.1)
+                                    color: Theme.onSurface_12
                                     anchors.horizontalCenter: parent.horizontalCenter
 
                                     StyledText {
                                         text: gridButtonRect.actionData.key
                                         font.pixelSize: Theme.fontSizeSmall - 1
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                        color: Theme.surfaceTextSecondary
                                         font.weight: Font.Medium
                                         anchors.centerIn: parent
                                     }
@@ -659,32 +679,19 @@ Rectangle {
                             radius: Theme.cornerRadius
                             color: {
                                 if (isSelected)
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12);
+                                    return Theme.primaryHover;
                                 if (listMouseArea.containsMouse)
-                                    return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08);
-                                return Qt.rgba(Theme.surfaceVariant.r, Theme.surfaceVariant.g, Theme.surfaceVariant.b, 0.08);
+                                    return Theme.primaryHoverLight;
+                                return Theme.surfaceHover;
                             }
-                            border.color: isSelected ? Theme.primary : "transparent"
+                            border.color: isSelected ? Theme.primary : Theme.withAlpha(Theme.primary, 0)
                             border.width: isSelected ? 2 : 0
 
-                            Rectangle {
-                                id: listProgressMask
+                            ClippingRectangle {
                                 anchors.fill: parent
                                 radius: parent.radius
-                                visible: false
-                                layer.enabled: true
-                            }
-
-                            Item {
-                                anchors.fill: parent
+                                color: "transparent"
                                 visible: listButtonRect.isHolding
-                                layer.enabled: listButtonRect.isHolding
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: listProgressMask
-                                    maskSpreadAtMin: 1
-                                    maskThresholdMin: 0.5
-                                }
 
                                 Rectangle {
                                     anchors.left: parent.left
@@ -693,10 +700,10 @@ Rectangle {
                                     width: parent.width * root.holdProgress
                                     color: {
                                         if (listButtonRect.modelData === "poweroff")
-                                            return Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.3);
+                                            return Theme.errorSelected;
                                         if (listButtonRect.modelData === "reboot")
-                                            return Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3);
-                                        return Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3);
+                                            return Theme.withAlpha(Theme.warning, 0.3);
+                                        return Theme.primarySelected;
                                     }
                                 }
                             }
@@ -739,7 +746,7 @@ Rectangle {
                                 width: 28
                                 height: 20
                                 radius: 4
-                                color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.1)
+                                color: Theme.onSurface_12
                                 anchors.right: parent.right
                                 anchors.rightMargin: Theme.spacingM
                                 anchors.verticalCenter: parent.verticalCenter
@@ -747,7 +754,7 @@ Rectangle {
                                 StyledText {
                                     text: listButtonRect.actionData.key
                                     font.pixelSize: Theme.fontSizeSmall
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                    color: Theme.surfaceTextSecondary
                                     font.weight: Font.Medium
                                     anchors.centerIn: parent
                                 }
@@ -787,7 +794,7 @@ Rectangle {
                     DankIcon {
                         name: root.showHoldHint ? "warning" : "touch_app"
                         size: Theme.fontSizeSmall
-                        color: root.showHoldHint ? Theme.warning : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                        color: root.showHoldHint ? Theme.warning : Theme.surfaceTextSecondary
                         anchors.verticalCenter: parent.verticalCenter
                     }
 
@@ -808,7 +815,7 @@ Rectangle {
                             return I18n.tr("Hold to confirm (%1s)").arg(durationSec);
                         }
                         font.pixelSize: Theme.fontSizeSmall
-                        color: root.showHoldHint ? Theme.warning : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                        color: root.showHoldHint ? Theme.warning : Theme.surfaceTextSecondary
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }

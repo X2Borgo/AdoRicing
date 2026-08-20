@@ -15,7 +15,7 @@ Item {
     property bool isSway: CompositorService.isSway
     property bool isScroll: CompositorService.isScroll
     property bool isMiracle: CompositorService.isMiracle
-    property bool isDwl: CompositorService.isDwl
+    property bool isMango: CompositorService.isMango
     property bool isLabwc: CompositorService.isLabwc
 
     property string compositorName: {
@@ -27,7 +27,7 @@ Item {
             return "scroll";
         if (isMiracle)
             return "miracle";
-        if (isDwl)
+        if (isMango)
             return "mangowc";
         if (isLabwc)
             return "labwc";
@@ -43,7 +43,7 @@ Item {
             return "/assets/sway.svg";
         if (isMiracle)
             return "/assets/miraclewm.svg";
-        if (isDwl)
+        if (isMango)
             return "/assets/mango.png";
         if (isLabwc)
             return "/assets/labwc.png";
@@ -59,7 +59,7 @@ Item {
             return "https://github.com/dawsers/scroll";
         if (isMiracle)
             return "https://github.com/miracle-wm-org/miracle-wm";
-        if (isDwl)
+        if (isMango)
             return "https://github.com/DreamMaoMao/mangowc";
         if (isLabwc)
             return "https://labwc.github.io/";
@@ -75,7 +75,7 @@ Item {
             return I18n.tr("Scroll GitHub");
         if (isMiracle)
             return I18n.tr("Scroll GitHub");
-        if (isDwl)
+        if (isMango)
             return I18n.tr("mangowc GitHub");
         if (isLabwc)
             return I18n.tr("LabWC Website");
@@ -88,7 +88,7 @@ Item {
     property string compositorDiscordUrl: {
         if (isHyprland)
             return "https://discord.com/invite/hQ9XvMUjjr";
-        if (isDwl)
+        if (isMango)
             return "https://discord.gg/CPjbDxesh5";
         return "";
     }
@@ -96,7 +96,7 @@ Item {
     property string compositorDiscordTooltip: {
         if (isHyprland)
             return I18n.tr("Hyprland Discord Server");
-        if (isDwl)
+        if (isMango)
             return I18n.tr("mangowc Discord Server");
         return "";
     }
@@ -107,9 +107,9 @@ Item {
     property string ircUrl: "https://web.libera.chat/gamja/?channels=#labwc"
     property string ircTooltip: I18n.tr("LabWC IRC Channel")
 
-    property bool showMatrix: isNiri && !isHyprland && !isSway && !isScroll && !isMiracle && !isDwl && !isLabwc
-    property bool showCompositorDiscord: isHyprland || isDwl
-    property bool showReddit: isNiri && !isHyprland && !isSway && !isScroll && !isMiracle && !isDwl && !isLabwc
+    property bool showMatrix: isNiri && !isHyprland && !isSway && !isScroll && !isMiracle && !isMango && !isLabwc
+    property bool showCompositorDiscord: isHyprland || isMango
+    property bool showReddit: isNiri && !isHyprland && !isSway && !isScroll && !isMiracle && !isMango && !isLabwc
     property bool showIrc: isLabwc
 
     DankFlickable {
@@ -132,7 +132,7 @@ Item {
                 height: asciiSection.implicitHeight + Theme.spacingL * 2
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainerHigh
-                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                border.color: Theme.outlineHeavy
                 border.width: 0
 
                 Column {
@@ -274,7 +274,7 @@ Item {
                             text: resourceButtonsRow.compactMode ? "" : I18n.tr("Docs")
                             iconName: "menu_book"
                             iconSize: 18
-                            backgroundColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+                            backgroundColor: Theme.surfaceTextHover
                             textColor: Theme.surfaceText
                             onClicked: Qt.openUrlExternally("https://danklinux.com/docs")
                             onHoveredChanged: {
@@ -290,7 +290,7 @@ Item {
                             text: resourceButtonsRow.compactMode ? "" : I18n.tr("Plugins")
                             iconName: "extension"
                             iconSize: 18
-                            backgroundColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+                            backgroundColor: Theme.surfaceTextHover
                             textColor: Theme.surfaceText
                             onClicked: Qt.openUrlExternally("https://plugins.danklinux.com")
                             onHoveredChanged: {
@@ -306,7 +306,7 @@ Item {
                             text: resourceButtonsRow.compactMode ? "" : I18n.tr("GitHub")
                             iconName: "code"
                             iconSize: 18
-                            backgroundColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+                            backgroundColor: Theme.surfaceTextHover
                             textColor: Theme.surfaceText
                             onClicked: Qt.openUrlExternally("https://github.com/AvengeMedia/DankMaterialShell")
                             onHoveredChanged: {
@@ -322,7 +322,7 @@ Item {
                             text: resourceButtonsRow.compactMode ? "" : I18n.tr("Ko-fi")
                             iconName: "favorite"
                             iconSize: 18
-                            backgroundColor: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                            backgroundColor: Theme.primaryHover
                             textColor: Theme.primary
                             onClicked: Qt.openUrlExternally("https://ko-fi.com/danklinux")
                             onHoveredChanged: {
@@ -551,7 +551,7 @@ Item {
                 height: projectSection.implicitHeight + Theme.spacingL * 2
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainerHigh
-                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                border.color: Theme.outlineHeavy
                 border.width: 0
 
                 Column {
@@ -607,7 +607,7 @@ Item {
                 height: backendSection.implicitHeight + Theme.spacingL * 2
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainerHigh
-                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                border.color: Theme.outlineHeavy
                 border.width: 0
 
                 Column {
@@ -642,7 +642,7 @@ Item {
                         spacing: Theme.spacingL
 
                         Column {
-                            spacing: 2
+                            spacing: Theme.spacingXXS
 
                             StyledText {
                                 text: I18n.tr("Version")
@@ -667,7 +667,7 @@ Item {
                         }
 
                         Column {
-                            spacing: 2
+                            spacing: Theme.spacingXXS
 
                             StyledText {
                                 text: I18n.tr("API")
@@ -692,7 +692,7 @@ Item {
                         }
 
                         Column {
-                            spacing: 2
+                            spacing: Theme.spacingXXS
 
                             StyledText {
                                 text: I18n.tr("Status")
@@ -702,7 +702,7 @@ Item {
                             }
 
                             Row {
-                                spacing: 4
+                                spacing: Theme.spacingXS
 
                                 Rectangle {
                                     width: 8
@@ -738,7 +738,7 @@ Item {
 
                         Flow {
                             width: parent.width
-                            spacing: 6
+                            spacing: Theme.spacingS
 
                             Repeater {
                                 model: DMSService.capabilities
@@ -747,7 +747,7 @@ Item {
                                     width: capText.implicitWidth + 16
                                     height: 26
                                     radius: 13
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                    color: Theme.primaryHover
 
                                     StyledText {
                                         id: capText
@@ -768,7 +768,7 @@ Item {
                 height: toolsSection.implicitHeight + Theme.spacingL * 2
                 radius: Theme.cornerRadius
                 color: Theme.surfaceContainerHigh
-                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                border.color: Theme.outlineHeavy
                 border.width: 0
 
                 Column {
@@ -805,7 +805,7 @@ Item {
                         DankButton {
                             text: I18n.tr("Show Welcome")
                             iconName: "waving_hand"
-                            backgroundColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+                            backgroundColor: Theme.surfaceTextHover
                             textColor: Theme.surfaceText
                             onClicked: FirstLaunchService.showWelcome()
                         }
@@ -813,7 +813,7 @@ Item {
                         DankButton {
                             text: I18n.tr("System Check")
                             iconName: "vital_signs"
-                            backgroundColor: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.08)
+                            backgroundColor: Theme.surfaceTextHover
                             textColor: Theme.surfaceText
                             onClicked: FirstLaunchService.showDoctor()
                         }

@@ -23,6 +23,7 @@ Rectangle {
     property bool searchActive: searchField.text.length > 0
     property int searchSelectedIndex: 0
     property int keyboardHighlightIndex: -1
+    readonly property int navigationStateDuration: Theme.currentAnimationSpeed === SettingsData.AnimationSpeed.None ? 0 : Anims.settingsNavigationStateDuration
 
     function focusSearch() {
         searchField.forceActiveFocus();
@@ -101,6 +102,13 @@ Rectangle {
                     "icon": "volume_up",
                     "tabIndex": 15,
                     "soundsOnly": true
+                },
+                {
+                    "id": "compositor_layout",
+                    "text": CompositorService.isNiri ? "Niri" : (CompositorService.isHyprland ? "Hyprland" : "MangoWC"),
+                    "icon": "layers",
+                    "tabIndex": 37,
+                    "layoutCapable": true
                 }
             ]
         },
@@ -109,6 +117,12 @@ Rectangle {
             "text": I18n.tr("Dank Bar"),
             "icon": "toolbar",
             "children": [
+                {
+                    "id": "dankbar_appearance",
+                    "text": I18n.tr("Appearance"),
+                    "icon": "palette",
+                    "tabIndex": 6
+                },
                 {
                     "id": "dankbar_settings",
                     "text": I18n.tr("Settings"),
@@ -122,6 +136,12 @@ Rectangle {
                     "tabIndex": 22
                 },
                 {
+                    "id": "workspaces",
+                    "text": I18n.tr("Workspaces"),
+                    "icon": "view_module",
+                    "tabIndex": 4
+                },
+                {
                     "id": "frame",
                     "text": I18n.tr("Frame"),
                     "icon": "frame_source",
@@ -131,15 +151,15 @@ Rectangle {
         },
         {
             "id": "workspaces_widgets",
-            "text": I18n.tr("Workspaces & Widgets"),
+            "text": I18n.tr("Widgets & Notifications"),
             "icon": "dashboard",
             "collapsedByDefault": true,
             "children": [
                 {
-                    "id": "workspaces",
-                    "text": I18n.tr("Workspaces"),
-                    "icon": "view_module",
-                    "tabIndex": 4
+                    "id": "dank_dash",
+                    "text": I18n.tr("Dank Dash"),
+                    "icon": "space_dashboard",
+                    "tabIndex": 43
                 },
                 {
                     "id": "media_player",
@@ -224,8 +244,33 @@ Rectangle {
             "id": "network",
             "text": I18n.tr("Network"),
             "icon": "wifi",
-            "tabIndex": 7,
-            "dmsOnly": true
+            "dmsOnly": true,
+            "children": [
+                {
+                    "id": "network_status",
+                    "text": I18n.tr("Status"),
+                    "icon": "lan",
+                    "tabIndex": 7
+                },
+                {
+                    "id": "network_ethernet",
+                    "text": I18n.tr("Ethernet"),
+                    "icon": "settings_ethernet",
+                    "tabIndex": 39
+                },
+                {
+                    "id": "network_wifi",
+                    "text": I18n.tr("WiFi"),
+                    "icon": "wifi",
+                    "tabIndex": 40
+                },
+                {
+                    "id": "network_vpn",
+                    "text": I18n.tr("VPN"),
+                    "icon": "vpn_key",
+                    "tabIndex": 41
+                }
+            ]
         },
         {
             "id": "applications",
@@ -245,6 +290,20 @@ Rectangle {
                     "icon": "app_registration",
                     "tabIndex": 19,
                     "hyprlandNiriOnly": true
+                },
+                {
+                    "id": "autostart",
+                    "text": I18n.tr("Autostart Apps"),
+                    "icon": "line_start",
+                    "tabIndex": 36,
+                    "autostartOnly": true
+                },
+                {
+                    "id": "window_rules",
+                    "text": I18n.tr("Window Rules"),
+                    "icon": "select_window",
+                    "tabIndex": 38,
+                    "windowRulesCapable": true
                 }
             ]
         },
@@ -294,11 +353,10 @@ Rectangle {
                     "updaterOnly": true
                 },
                 {
-                    "id": "window_rules",
-                    "text": I18n.tr("Window Rules"),
-                    "icon": "select_window",
-                    "tabIndex": 28,
-                    "niriOnly": true
+                    "id": "users",
+                    "text": I18n.tr("Users"),
+                    "icon": "manage_accounts",
+                    "tabIndex": 35
                 }
             ]
         },
@@ -308,6 +366,12 @@ Rectangle {
             "icon": "security",
             "collapsedByDefault": true,
             "children": [
+                {
+                    "id": "battery",
+                    "text": I18n.tr("Battery"),
+                    "icon": "battery_charging_full",
+                    "tabIndex": 42
+                },
                 {
                     "id": "lock_screen",
                     "text": I18n.tr("Lock Screen"),
@@ -357,11 +421,17 @@ Rectangle {
             return false;
         if (item.hyprlandNiriOnly && !CompositorService.isNiri && !CompositorService.isHyprland)
             return false;
+        if (item.windowRulesCapable && !CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
+            return false;
+        if (item.layoutCapable && !CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
+            return false;
         if (item.niriOnly && !CompositorService.isNiri)
             return false;
         if (item.clipboardOnly && (!DMSService.isConnected || DMSService.apiVersion < 23))
             return false;
         if (item.updaterOnly && !SystemUpdateService.sysupdateAvailable)
+            return false;
+        if (item.autostartOnly && !DesktopService.autostartAvailable)
             return false;
         return true;
     }
@@ -527,6 +597,8 @@ Rectangle {
             return -1;
 
         var normalized = name.toLowerCase().replace(/[_\-\s]/g, "");
+        if (normalized === "compositor")
+            normalized = "workspaces";
 
         for (var i = 0; i < categoryStructure.length; i++) {
             var cat = categoryStructure[i];
@@ -571,7 +643,7 @@ Rectangle {
         id: __m1
         font.pixelSize: Theme.fontSizeMedium
         font.weight: Font.Medium
-        text: I18n.tr("Workspaces & Widgets")
+        text: I18n.tr("Widgets & Notifications")
     }
     StyledTextMetrics {
         id: __m2
@@ -614,9 +686,6 @@ Rectangle {
         tabChangeRequested(result.tabIndex);
         autoCollapseIfNeeded(oldIndex, result.tabIndex);
         autoExpandForTab(result.tabIndex);
-        searchField.text = "";
-        SettingsSearchService.clear();
-        searchSelectedIndex = 0;
         keyboardHighlightIndex = -1;
         Qt.callLater(searchField.forceActiveFocus);
     }
@@ -639,7 +708,7 @@ Rectangle {
             rightPadding: Theme.spacingS
             bottomPadding: Theme.spacingL
             topPadding: Theme.spacingM + 2
-            spacing: 2
+            spacing: Theme.spacingXXS
 
             ProfileSection {
                 width: parent.width - parent.leftPadding - parent.rightPadding
@@ -732,7 +801,7 @@ Rectangle {
             Column {
                 id: searchResultsColumn
                 width: parent.width - parent.leftPadding - parent.rightPadding
-                spacing: 2
+                spacing: Theme.spacingXXS
                 visible: root.searchActive
 
                 Item {
@@ -765,6 +834,7 @@ Rectangle {
                             id: resultRipple
                             rippleColor: root.searchSelectedIndex === resultDelegate.index ? Theme.buttonText : Theme.surfaceText
                             cornerRadius: resultDelegate.radius
+                            animationDuration: Anims.settingsNavigationRippleDuration
                         }
 
                         Row {
@@ -786,7 +856,7 @@ Rectangle {
                             Column {
                                 width: parent.width - Theme.iconSize - Theme.spacingM
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 StyledText {
                                     text: resultDelegate.modelData.label
@@ -820,8 +890,9 @@ Rectangle {
 
                         Behavior on color {
                             ColorAnimation {
-                                duration: Theme.shortDuration
-                                easing.type: Theme.standardEasing
+                                duration: root.navigationStateDuration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Anims.expressiveEffects
                             }
                         }
                     }
@@ -854,7 +925,7 @@ Rectangle {
 
                     width: parent.width - parent.leftPadding - parent.rightPadding
                     visible: !root.searchActive && root.isCategoryVisible(modelData)
-                    spacing: 2
+                    spacing: Theme.spacingXXS
 
                     Rectangle {
                         width: parent.width
@@ -895,6 +966,7 @@ Rectangle {
                             id: categoryRipple
                             rippleColor: categoryRow.isActive ? Theme.buttonText : Theme.surfaceText
                             cornerRadius: categoryRow.radius
+                            animationDuration: Anims.settingsNavigationRippleDuration
                         }
 
                         Row {
@@ -950,8 +1022,9 @@ Rectangle {
 
                         Behavior on color {
                             ColorAnimation {
-                                duration: Theme.shortDuration
-                                easing.type: Theme.standardEasing
+                                duration: root.navigationStateDuration
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Anims.expressiveEffects
                             }
                         }
                     }
@@ -959,7 +1032,7 @@ Rectangle {
                     Column {
                         id: childrenColumn
                         width: parent.width
-                        spacing: 2
+                        spacing: Theme.spacingXXS
                         visible: categoryDelegate.modelData.children !== undefined && root.isCategoryExpanded(categoryDelegate.modelData.id)
                         clip: true
 
@@ -992,6 +1065,7 @@ Rectangle {
                                     id: childRipple
                                     rippleColor: childDelegate.isActive ? Theme.buttonText : Theme.surfaceText
                                     cornerRadius: childDelegate.radius
+                                    animationDuration: Anims.settingsNavigationRippleDuration
                                 }
 
                                 Row {
@@ -1032,8 +1106,9 @@ Rectangle {
 
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: Theme.shortDuration
-                                        easing.type: Theme.standardEasing
+                                        duration: root.navigationStateDuration
+                                        easing.type: Easing.BezierSpline
+                                        easing.bezierCurve: Anims.expressiveEffects
                                     }
                                 }
                             }

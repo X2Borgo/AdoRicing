@@ -6,6 +6,7 @@ import qs.Widgets
 
 Item {
     id: root
+    visible: dropdownType !== 0
 
     LayoutMirroring.enabled: I18n.isRtl
     LayoutMirroring.childrenInherit: true
@@ -13,6 +14,8 @@ Item {
     property int dropdownType: 0
     property var activePlayer: null
     property var allPlayers: []
+    // Chromium keeps dead MPRIS services registered w/empty metadata; avoid listing them
+    readonly property var selectablePlayers: (allPlayers || []).filter(p => p && !MprisController.isIdle(p))
     property point anchorPos: Qt.point(0, 0)
     property bool isRightEdge: false
     property var targetWindow: null
@@ -42,17 +45,41 @@ Item {
     signal panelEntered
     signal panelExited
 
-    property int __volumeHoverCount: 0
+    property int __panelHoverCount: 0
 
-    function volumeAreaEntered() {
-        __volumeHoverCount++;
+    readonly property bool overlayBlurActive: dropdownBlur.active
+
+    onDropdownTypeChanged: {
+        if (dropdownType === 0) {
+            __panelHoverCount = 0;
+        }
+    }
+
+    function panelAreaEntered() {
+        __panelHoverCount++;
         panelEntered();
     }
 
-    function volumeAreaExited() {
-        __volumeHoverCount = Math.max(0, __volumeHoverCount - 1);
-        if (__volumeHoverCount === 0)
+    function panelAreaExited() {
+        __panelHoverCount = Math.max(0, __panelHoverCount - 1);
+        if (__panelHoverCount === 0)
             panelExited();
+    }
+
+    property real _wheelAccum: 0
+
+    function volumeWheel(wheelEvent) {
+        if (!volumeAvailable)
+            return;
+        wheelEvent.accepted = true;
+        _wheelAccum += wheelEvent.angleDelta.y;
+        const notches = _wheelAccum > 0 ? Math.floor(_wheelAccum / 120) : Math.ceil(_wheelAccum / 120);
+        if (notches === 0)
+            return;
+        _wheelAccum -= notches * 120;
+        SessionData.suppressOSDTemporarily();
+        const next = currentVolume + notches * AudioService.wheelVolumeStep / 100;
+        root.volumeChanged(Math.max(0, Math.min(1, next)));
     }
 
     readonly property Item __activePanel: {
@@ -69,8 +96,10 @@ Item {
     }
 
     WindowBlur {
+        id: dropdownBlur
         targetWindow: root.targetWindow
         readonly property bool active: root.__activePanel !== null && root.__activePanel.visible && root.__activePanel.opacity > 0
+        blurEnabled: active && Theme.connectedSurfaceBlurEnabled
         readonly property real s: root.__activePanel ? Math.min(1, root.__activePanel.scale) : 1
         blurX: root.__activePanel ? root.__activePanel.x + root.__activePanel.width * (1 - s) * 0.5 : 0
         blurY: root.__activePanel ? root.__activePanel.y + root.__activePanel.height * (1 - s) * 0.5 : 0
@@ -124,15 +153,16 @@ Item {
             borderColor: volumePanel.border.color
             borderWidth: volumePanel.border.width
             shadowOpacity: Theme.elevationLevel2 && Theme.elevationLevel2.alpha !== undefined ? Theme.elevationLevel2.alpha : 0.25
-            shadowEnabled: Theme.elevationEnabled && !BlurService.enabled
+            shadowEnabled: Theme.elevationEnabled
         }
 
         MouseArea {
             anchors.fill: parent
             anchors.margins: -12
             hoverEnabled: true
-            onEntered: volumeAreaEntered()
-            onExited: volumeAreaExited()
+            onEntered: panelAreaEntered()
+            onExited: panelAreaExited()
+            onWheel: wheelEvent => root.volumeWheel(wheelEvent)
         }
 
         Item {
@@ -190,8 +220,9 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     preventStealing: true
 
-                    onEntered: volumeAreaEntered()
-                    onExited: volumeAreaExited()
+                    onEntered: panelAreaEntered()
+                    onExited: panelAreaExited()
+                    onWheel: wheelEvent => root.volumeWheel(wheelEvent)
                     onPressed: mouse => updateVolume(mouse)
                     onPositionChanged: mouse => {
                         if (pressed)
@@ -266,7 +297,15 @@ Item {
             borderColor: audioDevicesPanel.border.color
             borderWidth: audioDevicesPanel.border.width
             shadowOpacity: Theme.elevationLevel2 && Theme.elevationLevel2.alpha !== undefined ? Theme.elevationLevel2.alpha : 0.25
-            shadowEnabled: Theme.elevationEnabled && !BlurService.enabled
+            shadowEnabled: Theme.elevationEnabled
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -12
+            hoverEnabled: true
+            onEntered: panelAreaEntered()
+            onExited: panelAreaExited()
         }
 
         Column {
@@ -303,8 +342,8 @@ Item {
                             width: parent.width
                             height: 48
                             radius: Theme.cornerRadius
-                            color: deviceMouseArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Theme.nestedSurface
-                            border.color: modelData === AudioService.sink ? Theme.primary : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                            color: deviceMouseArea.containsMouse ? Theme.primaryHover : Theme.nestedSurface
+                            border.color: modelData === AudioService.sink ? Theme.primary : Theme.outlineHeavy
                             border.width: modelData === AudioService.sink ? 2 : 1
 
                             Row {
@@ -349,7 +388,13 @@ Item {
                                     }
 
                                     StyledText {
-                                        text: modelData === AudioService.sink ? "Active" : "Available"
+                                        text: {
+                                            if (!modelData?.audio)
+                                                return modelData === AudioService.sink ? I18n.tr("Active") : I18n.tr("Available");
+                                            if (modelData.audio.muted)
+                                                return I18n.tr("Muted", "audio status");
+                                            return Math.round(modelData.audio.volume * 100) + "%";
+                                        }
                                         font.pixelSize: Theme.fontSizeSmall
                                         color: Theme.surfaceVariantText
                                         elide: Text.ElideRight
@@ -363,12 +408,34 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onPressed: mouse => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        mouse.accepted = true;
+                                    }
+                                }
+                                onWheel: wheelEvent => {
+                                    if (SettingsData.audioDeviceScrollVolumeEnabled && wheelEvent.x >= deviceMouseArea.width / 2) {
+                                        AudioService.handleNodeVolumeWheel(modelData, wheelEvent);
+                                    } else {
+                                        wheelEvent.accepted = false;
+                                    }
+                                }
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton) {
+                                        if (modelData && modelData.audio) {
+                                            SessionData.suppressOSDTemporarily();
+                                            modelData.audio.muted = !modelData.audio.muted;
+                                        }
+                                        return;
+                                    }
                                     if (modelData && modelData.name) {
                                         AudioService.setDefaultSinkByName(modelData.name);
                                         root.deviceSelected(modelData);
                                     }
                                 }
+                                onEntered: panelAreaEntered()
+                                onExited: panelAreaExited()
                             }
                         }
                     }
@@ -381,7 +448,7 @@ Item {
         id: playersPanel
         visible: dropdownType === 3
         width: 240
-        height: Math.max(180, Math.min(240, (allPlayers?.length || 0) * 50 + 80))
+        height: Math.max(180, Math.min(240, (root.selectablePlayers?.length || 0) * 50 + 80))
         x: isRightEdge ? anchorPos.x : anchorPos.x - width
         y: anchorPos.y - height / 2
         radius: Theme.cornerRadius * 2
@@ -422,7 +489,15 @@ Item {
             borderColor: playersPanel.border.color
             borderWidth: playersPanel.border.width
             shadowOpacity: Theme.elevationLevel2 && Theme.elevationLevel2.alpha !== undefined ? Theme.elevationLevel2.alpha : 0.25
-            shadowEnabled: Theme.elevationEnabled && !BlurService.enabled
+            shadowEnabled: Theme.elevationEnabled
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -12
+            hoverEnabled: true
+            onEntered: panelAreaEntered()
+            onExited: panelAreaExited()
         }
 
         Column {
@@ -430,7 +505,7 @@ Item {
             anchors.margins: Theme.spacingM
 
             StyledText {
-                text: I18n.tr("Media Players (") + (allPlayers?.length || 0) + ")"
+                text: I18n.tr("Media Players (") + (root.selectablePlayers?.length || 0) + ")"
                 font.pixelSize: Theme.fontSizeMedium
                 font.weight: Font.Medium
                 color: Theme.surfaceText
@@ -451,7 +526,7 @@ Item {
                     spacing: Theme.spacingS
 
                     Repeater {
-                        model: allPlayers || []
+                        model: root.selectablePlayers || []
                         delegate: Rectangle {
                             required property var modelData
                             required property int index
@@ -459,8 +534,8 @@ Item {
                             width: parent.width
                             height: 48
                             radius: Theme.cornerRadius
-                            color: playerMouseArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Theme.nestedSurface
-                            border.color: modelData === activePlayer ? Theme.primary : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                            color: playerMouseArea.containsMouse ? Theme.primaryHover : Theme.nestedSurface
+                            border.color: modelData === activePlayer ? Theme.primary : Theme.outlineHeavy
                             border.width: modelData === activePlayer ? 2 : 1
 
                             Row {
@@ -498,15 +573,7 @@ Item {
                                     }
 
                                     StyledText {
-                                        text: {
-                                            if (!modelData)
-                                                return "";
-                                            const artist = modelData.trackArtist || "";
-                                            const isActive = modelData === activePlayer;
-                                            if (artist.length > 0)
-                                                return artist + (isActive ? " (Active)" : "");
-                                            return isActive ? "Active" : "Available";
-                                        }
+                                        text: modelData?.trackArtist || I18n.tr("Unknown Artist")
                                         font.pixelSize: Theme.fontSizeSmall
                                         color: Theme.surfaceVariantText
                                         elide: Text.ElideRight
@@ -526,18 +593,13 @@ Item {
                                         root.playerSelected(modelData);
                                     }
                                 }
+                                onEntered: panelAreaEntered()
+                                onExited: panelAreaExited()
                             }
                         }
                     }
                 }
             }
         }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        z: -1
-        enabled: dropdownType !== 0
-        onClicked: closeRequested()
     }
 }

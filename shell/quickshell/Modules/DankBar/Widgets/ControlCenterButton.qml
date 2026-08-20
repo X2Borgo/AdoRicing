@@ -26,6 +26,8 @@ BasePill {
     property bool showBatteryIcon: widgetData?.showBatteryIcon !== undefined ? widgetData.showBatteryIcon : SettingsData.controlCenterShowBatteryIcon
     property bool showPrinterIcon: widgetData?.showPrinterIcon !== undefined ? widgetData.showPrinterIcon : SettingsData.controlCenterShowPrinterIcon
     property bool showScreenSharingIcon: widgetData?.showScreenSharingIcon !== undefined ? widgetData.showScreenSharingIcon : SettingsData.controlCenterShowScreenSharingIcon
+    property bool showIdleInhibitorIcon: widgetData?.showIdleInhibitorIcon !== undefined ? widgetData.showIdleInhibitorIcon : SettingsData.controlCenterShowIdleInhibitorIcon
+    property bool showDoNotDisturbIcon: widgetData?.showDoNotDisturbIcon !== undefined ? widgetData.showDoNotDisturbIcon : SettingsData.controlCenterShowDoNotDisturbIcon
     property real touchpadThreshold: 100
     property real micAccumulator: 0
     property real volumeAccumulator: 0
@@ -40,7 +42,7 @@ BasePill {
     property var _vBrightness: null
     property var _vMic: null
     property var _interactionDelegates: []
-    readonly property var defaultControlCenterGroupOrder: ["network", "vpn", "bluetooth", "audio", "microphone", "brightness", "battery", "printer", "screenSharing"]
+    readonly property var defaultControlCenterGroupOrder: ["network", "vpn", "bluetooth", "audio", "microphone", "brightness", "battery", "printer", "screenSharing", "idleInhibitor", "doNotDisturb"]
     readonly property var effectiveControlCenterGroupOrder: getEffectiveControlCenterGroupOrder()
     readonly property var controlCenterRenderModel: getControlCenterRenderModel()
 
@@ -131,7 +133,17 @@ BasePill {
     function getNetworkIconColor() {
         if (NetworkService.wifiToggling)
             return Theme.primary;
+        if (NetworkService.isConnecting && !NetworkService.ethernetConnected)
+            return Theme.primary;
         return NetworkService.networkStatus !== "disconnected" ? Theme.primary : Theme.surfaceText;
+    }
+
+    function getIconBlinking(id) {
+        if (id === "network")
+            return NetworkService.isWifiConnecting;
+        if (id === "bluetooth")
+            return BluetoothService.connecting;
+        return false;
     }
 
     function getVolumeIconName() {
@@ -163,7 +175,7 @@ BasePill {
     }
 
     function getBrightnessIconName() {
-        const deviceName = getPinnedBrightnessDevice();
+        const deviceName = getEffectiveBrightnessDevice();
         if (!deviceName)
             return "brightness_medium";
         const level = DisplayService.getDeviceBrightness(deviceName);
@@ -191,12 +203,12 @@ BasePill {
         const pinKey = getScreenPinKey();
         if (!pinKey)
             return "";
-        const pins = SettingsData.brightnessDevicePins || {};
+        const pins = CacheData.brightnessDevicePins || {};
         return pins[pinKey] || "";
     }
 
-    function hasPinnedBrightnessDevice() {
-        return getPinnedBrightnessDevice().length > 0;
+    function getEffectiveBrightnessDevice() {
+        return getPinnedBrightnessDevice() || DisplayService.getDefaultDevice();
     }
 
     function handleVolumeWheel(delta) {
@@ -243,10 +255,11 @@ BasePill {
         const newVolume = delta > 0 ? Math.min(100, currentVolume + step) : Math.max(0, currentVolume - step);
         AudioService.source.audio.muted = false;
         AudioService.source.audio.volume = newVolume / 100;
+        AudioService.micVolumeChanged();
     }
 
     function handleBrightnessWheel(delta) {
-        const deviceName = getPinnedBrightnessDevice();
+        const deviceName = getEffectiveBrightnessDevice();
         if (!deviceName) {
             return;
         }
@@ -269,7 +282,7 @@ BasePill {
     }
 
     function getBrightness() {
-        const deviceName = getPinnedBrightnessDevice();
+        const deviceName = getEffectiveBrightnessDevice();
         if (!deviceName) {
             return;
         }
@@ -338,11 +351,15 @@ BasePill {
         case "microphone":
             return root.showMicIcon;
         case "brightness":
-            return root.showBrightnessIcon && DisplayService.brightnessAvailable && root.hasPinnedBrightnessDevice();
+            return root.showBrightnessIcon && DisplayService.brightnessAvailable && root.getEffectiveBrightnessDevice().length > 0;
         case "battery":
             return root.showBatteryIcon && BatteryService.batteryAvailable;
         case "printer":
             return root.showPrinterIcon && CupsService.cupsAvailable && root.hasPrintJobs();
+        case "idleInhibitor":
+            return root.showIdleInhibitorIcon && SessionService.idleInhibited;
+        case "doNotDisturb":
+            return root.showDoNotDisturbIcon && SessionData.doNotDisturb;
         default:
             return false;
         }
@@ -485,6 +502,7 @@ BasePill {
                         }
 
                         DankIcon {
+                            id: vIconOnlyItem
                             anchors.centerIn: parent
                             visible: !verticalGroupItem.modelData.composite
                             name: {
@@ -496,11 +514,15 @@ BasePill {
                                 case "vpn":
                                     return "vpn_lock";
                                 case "bluetooth":
-                                    return "bluetooth";
+                                    return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
                                     return "print";
+                                case "idleInhibitor":
+                                    return "motion_sensor_active";
+                                case "doNotDisturb":
+                                    return "do_not_disturb_on";
                                 default:
                                     return "settings";
                                 }
@@ -515,14 +537,23 @@ BasePill {
                                 case "vpn":
                                     return NetworkService.vpnConnected ? Theme.primary : Theme.surfaceText;
                                 case "bluetooth":
-                                    return BluetoothService.connected ? Theme.primary : Theme.surfaceText;
+                                    return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
                                 case "battery":
                                     return root.getBatteryIconColor();
                                 case "printer":
                                     return Theme.primary;
+                                case "idleInhibitor":
+                                    return Theme.primary;
+                                case "doNotDisturb":
+                                    return Theme.primary;
                                 default:
                                     return Theme.widgetIconColor;
                                 }
+                            }
+
+                            DankBlink {
+                                target: vIconOnlyItem
+                                running: root.getIconBlinking(verticalGroupItem.modelData.id)
                             }
                         }
 
@@ -668,11 +699,15 @@ BasePill {
                                 case "vpn":
                                     return "vpn_lock";
                                 case "bluetooth":
-                                    return "bluetooth";
+                                    return BluetoothService.connected ? "bluetooth_connected" : "bluetooth";
                                 case "battery":
                                     return Theme.getBatteryIcon(BatteryService.batteryLevel, BatteryService.isCharging, BatteryService.batteryAvailable);
                                 case "printer":
                                     return "print";
+                                case "idleInhibitor":
+                                    return "motion_sensor_active";
+                                case "doNotDisturb":
+                                    return "do_not_disturb_on";
                                 default:
                                     return "settings";
                                 }
@@ -687,14 +722,23 @@ BasePill {
                                 case "vpn":
                                     return NetworkService.vpnConnected ? Theme.primary : Theme.surfaceText;
                                 case "bluetooth":
-                                    return BluetoothService.connected ? Theme.primary : Theme.surfaceText;
+                                    return (BluetoothService.connected || BluetoothService.connecting) ? Theme.primary : Theme.surfaceText;
                                 case "battery":
                                     return root.getBatteryIconColor();
                                 case "printer":
                                     return Theme.primary;
+                                case "idleInhibitor":
+                                    return Theme.primary;
+                                case "doNotDisturb":
+                                    return Theme.primary;
                                 default:
                                     return Theme.widgetIconColor;
                                 }
+                            }
+
+                            DankBlink {
+                                target: iconOnlyItem
+                                running: root.getIconBlinking(horizontalGroupItem.modelData.id)
                             }
                         }
 
@@ -712,7 +756,7 @@ BasePill {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 1
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 DankIcon {
                                     id: audioIcon
@@ -749,7 +793,7 @@ BasePill {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 1
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 DankIcon {
                                     id: micIcon
@@ -786,7 +830,7 @@ BasePill {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 1
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 DankIcon {
                                     id: brightnessIcon

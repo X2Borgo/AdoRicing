@@ -300,6 +300,8 @@ Item {
         }
         WlrLayershell.exclusionMode: ExclusionMode.Ignore
         WlrLayershell.keyboardFocus: {
+            if (PopoutManager.screenshotActive)
+                return WlrKeyboardFocus.None;
             if (root.isInteracting) {
                 if (CompositorService.useHyprlandFocusGrab)
                     return WlrKeyboardFocus.OnDemand;
@@ -357,6 +359,17 @@ Item {
             anchors.fill: parent
             active: root.widgetEnabled && root.activeComponent !== null
             sourceComponent: root.activeComponent
+            opacity: 0
+
+            NumberAnimation {
+                id: revealFade
+                target: contentLoader
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: Theme.mediumDuration
+                easing.type: Theme.standardEasing
+            }
 
             function reloadComponent() {
                 active = false;
@@ -381,6 +394,8 @@ Item {
             onLoaded: {
                 if (!item)
                     return;
+
+                revealFade.restart();
 
                 if (item.pluginService !== undefined) {
                     item.pluginService = root.isInstance ? instanceScopedPluginService : root.pluginService;

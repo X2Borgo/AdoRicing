@@ -4,13 +4,14 @@ import Quickshell
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
 import qs.Common
+import qs.Modules.Notifications
 import qs.Services
 import qs.Widgets
 
 PanelWindow {
     id: win
 
-    readonly property bool connectedFrameMode: SettingsData.frameEnabled && Theme.isConnectedEffect && SettingsData.isScreenInPreferences(win.screen, SettingsData.frameScreenPreferences)
+    readonly property bool connectedFrameMode: CompositorService.usesConnectedFrameChromeForScreen(win.screen)
     readonly property string notifBarSide: {
         const pos = SettingsData.notificationPopupPosition;
         if (pos === -1)
@@ -44,6 +45,14 @@ PanelWindow {
         blurWidth: !win._finalized && !win.connectedFrameMode ? innerW * s : 0
         blurHeight: !win._finalized && !win.connectedFrameMode ? innerH * s : 0
         blurRadius: win.connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
+        // Slide-out translates the card past the surface edge; intersecting with the
+        // resting bounds keeps the committed region on the visible content instead of
+        // leaving a stray blur sliver at the edge (#2917).
+        clipEnabled: true
+        clipX: content.x + content.cardInset
+        clipY: content.y + content.cardInset
+        clipWidth: innerW
+        clipHeight: innerH
     }
 
     WlrLayershell.namespace: "dms:notification-popup"
@@ -69,6 +78,11 @@ PanelWindow {
     property real _storedTopMargin: 0
     property real _storedBottomMargin: 0
     property bool _inlineGeometryReady: false
+    readonly property bool contextMenuActive: transientSurfaces.active
+
+    TransientSurfaceTracker {
+        id: transientSurfaces
+    }
     readonly property bool directionalEffect: Theme.isDirectionalEffect
     readonly property bool depthEffect: Theme.isDepthEffect
     readonly property real entryTravel: {
@@ -121,6 +135,7 @@ PanelWindow {
         if (exiting || _isDestroying) {
             return;
         }
+        closeTransientUi();
         exiting = true;
         exitStarted();
         popupChromeGeometryChanged();
@@ -134,6 +149,7 @@ PanelWindow {
         if (_isDestroying) {
             return;
         }
+        closeTransientUi();
         _isDestroying = true;
         exiting = true;
         visible = false;
@@ -146,6 +162,7 @@ PanelWindow {
             return;
         }
 
+        closeTransientUi();
         _finalized = true;
         _isDestroying = true;
         exitWatchdog.stop();
@@ -154,30 +171,29 @@ PanelWindow {
         win.exitFinished();
     }
 
+    function closeTransientUi() {
+        transientSurfaces.closeAll();
+        popupContextMenuLoader.active = false;
+    }
+
+    function dismissPopupReliably() {
+        if (!notificationData || win.exiting || win._isDestroying)
+            return;
+        if (notificationData.timer)
+            notificationData.timer.stop();
+        notificationData.popup = false;
+        // Fallback if wrapperConn.onPopupChanged doesn't reach startExit.
+        Qt.callLater(() => {
+            if (!win.exiting && !win._isDestroying)
+                startExit();
+        });
+    }
+
     visible: !_finalized
     WlrLayershell.layer: {
-        const envLayer = Quickshell.env("DMS_NOTIFICATION_LAYER");
-        if (envLayer) {
-            switch (envLayer) {
-            case "bottom":
-                return WlrLayershell.Bottom;
-            case "overlay":
-                return WlrLayershell.Overlay;
-            case "background":
-                return WlrLayershell.Background;
-            case "top":
-                return WlrLayershell.Top;
-            }
-        }
-
-        if (!notificationData)
-            return WlrLayershell.Top;
-
-        SettingsData.notificationOverlayEnabled;
-
-        const shouldUseOverlay = (SettingsData.notificationOverlayEnabled) || (notificationData.urgency === NotificationUrgency.Critical);
-
-        return shouldUseOverlay ? WlrLayershell.Overlay : WlrLayershell.Top;
+        const shouldUseOverlay = notificationData && (SettingsData.notificationOverlayEnabled || notificationData.urgency === NotificationUrgency.Critical);
+        const fallback = shouldUseOverlay ? WlrLayer.Overlay : WlrLayer.Top;
+        return LayerShell.fromEnv("DMS_NOTIFICATION_LAYER", fallback);
     }
     WlrLayershell.exclusiveZone: -1
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -292,6 +308,7 @@ PanelWindow {
     }
     onNotificationDataChanged: {
         if (!_isDestroying) {
+            closeTransientUi();
             if (SettingsData.notificationPopupPrivacyMode)
                 descriptionExpanded = false;
             wrapperConn.target = win.notificationData || null;
@@ -304,6 +321,7 @@ PanelWindow {
         }
     }
     Component.onDestruction: {
+        closeTransientUi();
         _isDestroying = true;
         exitWatchdog.stop();
         if (notificationData && notificationData.timer) {
@@ -370,9 +388,9 @@ PanelWindow {
         return Math.max(0, Math.round(Theme.px(raw, dpr)));
     }
 
-    readonly property bool frameOnlyNoConnected: SettingsData.frameEnabled && !connectedFrameMode && !!screen && SettingsData.isScreenInPreferences(screen, SettingsData.frameScreenPreferences)
+    readonly property bool frameVisibleWithoutConnectedChrome: CompositorService.frameWindowVisibleForScreen(screen) && !connectedFrameMode
 
-    // Frame ON + Connected OFF. frameEdgeInset is the full bar/frame inset
+    // Frame visible without connected chrome. frameEdgeInset is the full bar/frame inset.
     function _frameGapMargin(side) {
         return _frameEdgeInset(side) + Theme.popupDistance;
     }
@@ -387,7 +405,7 @@ PanelWindow {
             const cornerClear = (isCenterPosition || SettingsData.frameCloseGaps) ? 0 : (Theme.px(SettingsData.frameRounding, dpr) + Theme.px(Theme.connectedCornerRadius, dpr));
             return _frameEdgeInset("top") + cornerClear + screenY;
         }
-        if (frameOnlyNoConnected)
+        if (frameVisibleWithoutConnectedChrome)
             return _frameGapMargin("top") + screenY;
         const barInfo = getBarInfo();
         const base = barInfo.topBar > 0 ? barInfo.topBar : Theme.popupDistance;
@@ -404,7 +422,7 @@ PanelWindow {
             const cornerClear = (isCenterPosition || SettingsData.frameCloseGaps) ? 0 : (Theme.px(SettingsData.frameRounding, dpr) + Theme.px(Theme.connectedCornerRadius, dpr));
             return _frameEdgeInset("bottom") + cornerClear + screenY;
         }
-        if (frameOnlyNoConnected)
+        if (frameVisibleWithoutConnectedChrome)
             return _frameGapMargin("bottom") + screenY;
         const barInfo = getBarInfo();
         const base = barInfo.bottomBar > 0 ? barInfo.bottomBar : Theme.popupDistance;
@@ -422,7 +440,7 @@ PanelWindow {
 
         if (connectedFrameMode)
             return _frameEdgeInset("left");
-        if (frameOnlyNoConnected)
+        if (frameVisibleWithoutConnectedChrome)
             return _frameGapMargin("left");
         const barInfo = getBarInfo();
         return barInfo.leftBar > 0 ? barInfo.leftBar : Theme.popupDistance;
@@ -439,7 +457,7 @@ PanelWindow {
 
         if (connectedFrameMode)
             return _frameEdgeInset("right");
-        if (frameOnlyNoConnected)
+        if (frameVisibleWithoutConnectedChrome)
             return _frameGapMargin("right");
         const barInfo = getBarInfo();
         return barInfo.rightBar > 0 ? barInfo.rightBar : Theme.popupDistance;
@@ -658,23 +676,17 @@ PanelWindow {
             shadowBlurPx: content.shadowBlurPx
             shadowOffsetX: content.shadowOffsetX
             shadowOffsetY: content.shadowOffsetY
-            shadowColor: content.shadowsAllowed && content.elevLevel ? Theme.elevationShadowColor(content.elevLevel) : "transparent"
+            shadowColor: content.shadowsAllowed && content.elevLevel ? Theme.elevationShadowColor(content.elevLevel) : Theme.withAlpha(Theme.elevationShadowColor(content.elevLevel), 0)
             shadowEnabled: !win._isDestroying && win.screenValid && content.shadowsAllowed && !win.connectedFrameMode
-            layer.textureSize: Qt.size(Math.round(width * win.dpr), Math.round(height * win.dpr))
-            layer.textureMirroring: ShaderEffectSource.MirrorVertically
 
-            sourceRect.anchors.fill: undefined
-            sourceRect.x: content.shadowRenderPadding + content.cardInset
-            sourceRect.y: content.shadowRenderPadding + content.cardInset
-            sourceRect.width: Math.max(0, content.width - (content.cardInset * 2))
-            sourceRect.height: Math.max(0, content.height - (content.cardInset * 2))
-            sourceRect.radius: win.connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
-            sourceRect.color: win.connectedFrameMode ? Theme.floatingSurface : Theme.readableSurface
-            sourceRect.antialiasing: true
-            sourceRect.layer.enabled: false
-            sourceRect.layer.textureSize: Qt.size(0, 0)
-            sourceRect.border.color: notificationData && notificationData.urgency === NotificationUrgency.Critical ? Theme.withAlpha(Theme.primary, 0.3) : Theme.withAlpha(Theme.outline, 0.08)
-            sourceRect.border.width: notificationData && notificationData.urgency === NotificationUrgency.Critical ? 2 : 0
+            sourceX: content.shadowRenderPadding + content.cardInset
+            sourceY: content.shadowRenderPadding + content.cardInset
+            sourceWidth: Math.max(0, content.width - (content.cardInset * 2))
+            sourceHeight: Math.max(0, content.height - (content.cardInset * 2))
+            targetRadius: win.connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
+            targetColor: win.connectedFrameMode ? Theme.notificationFloatingSurface : Theme.readableSurface
+            borderColor: win.notificationData && win.notificationData.urgency === NotificationUrgency.Critical ? Theme.withAlpha(Theme.primary, 0.3) : Theme.withAlpha(Theme.outline, 0.08)
+            borderWidth: win.notificationData && win.notificationData.urgency === NotificationUrgency.Critical ? 2 : 0
         }
 
         // Keep critical accent outside shadow rendering so connected mode still shows it.
@@ -715,7 +727,7 @@ PanelWindow {
             anchors.margins: content.cardInset
             radius: win.connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
             color: "transparent"
-            border.color: win.connectedFrameMode ? "transparent" : BlurService.borderColor
+            border.color: win.connectedFrameMode ? Theme.withAlpha(BlurService.borderColor, 0) : BlurService.borderColor
             border.width: win.connectedFrameMode ? 0 : BlurService.borderWidth
             z: 100
             scale: content.chromeScale
@@ -740,8 +752,53 @@ PanelWindow {
                     if (cardHoverHandler.hovered) {
                         if (notificationData.timer)
                             notificationData.timer.stop();
-                    } else if (notificationData.popup && notificationData.timer) {
+                    } else if (!win.contextMenuActive && notificationData.popup && notificationData.timer) {
                         notificationData.timer.restart();
+                    }
+                }
+            }
+
+            // Timeout progress bar: drains as the dismiss timer runs; inset by
+            // the corner radius and frozen while hovered or during exit.
+            Rectangle {
+                id: timeoutBar
+
+                readonly property bool active: SettingsData.notificationShowTimeoutBar && notificationData && notificationData.timer && notificationData.timer.interval > 0
+                property real progress: 1
+                readonly property real surfaceRadius: win.connectedFrameMode ? Theme.connectedSurfaceRadius : Theme.cornerRadius
+
+                visible: active && progress > 0
+                anchors.left: parent.left
+                anchors.leftMargin: surfaceRadius
+                anchors.bottom: parent.bottom
+                width: Math.max(0, parent.width - surfaceRadius * 2) * progress
+                height: Math.max(2, Theme.snap(3, win.dpr))
+                radius: height / 2
+                z: 50
+                opacity: 0.9
+                color: notificationData && notificationData.urgency === NotificationUrgency.Critical ? Theme.error : Theme.primary
+
+                NumberAnimation {
+                    id: progressAnim
+                    target: timeoutBar
+                    property: "progress"
+                    from: 1
+                    to: 0
+                    duration: (notificationData && notificationData.timer && notificationData.timer.interval > 0) ? notificationData.timer.interval : 5000
+                    running: timeoutBar.active && notificationData && notificationData.timer && notificationData.timer.running && !win.exiting
+                    easing.type: Easing.Linear
+                }
+
+                // Reset to full on every (re)start, including an in-place
+                // restart on a deduped notification (running stays true, so the
+                // bound animation alone wouldn't re-fire).
+                Connections {
+                    target: timeoutBar.active ? notificationData.timer : null
+                    function onRunningChanged() {
+                        if (notificationData && notificationData.timer && notificationData.timer.running && !win.exiting) {
+                            timeoutBar.progress = 1;
+                            progressAnim.restart();
+                        }
                     }
                 }
             }
@@ -755,6 +812,7 @@ PanelWindow {
                 visible: false
                 width: Math.max(0, backgroundContainer.width - Theme.spacingL - (Theme.spacingL + Theme.notificationHoverRevealMargin) - popupIconSize - Theme.spacingM)
                 text: notificationData ? (notificationData.htmlBody || "") : ""
+                textFormat: Text.StyledText
                 font.pixelSize: Theme.fontSizeSmall
                 elide: Text.ElideNone
                 horizontalAlignment: Text.AlignLeft
@@ -781,6 +839,7 @@ PanelWindow {
 
                 DankCircularImage {
                     id: iconContainer
+                    cacheImages: false
 
                     readonly property string rawImage: notificationData?.image || ""
                     readonly property string iconFromImage: {
@@ -792,8 +851,8 @@ PanelWindow {
                         const icon = iconFromImage;
                         return icon.startsWith("material:") || icon.startsWith("svg:") || icon.startsWith("unicode:") || icon.startsWith("image:");
                     }
-                    readonly property bool hasNotificationImage: rawImage !== "" && !rawImage.startsWith("image://icon/")
-                    readonly property bool needsImagePersist: hasNotificationImage && rawImage.startsWith("image://qsimage/") && !notificationData.persistedImagePath
+                    readonly property bool hasNotificationImage: rawImage !== "" && (!rawImage.startsWith("image://icon/") || iconFromImage.startsWith("/"))
+                    readonly property bool needsImagePersist: hasNotificationImage && (rawImage.startsWith("image://qsimage/") || iconFromImage.startsWith("/")) && !notificationData.persistedImagePath
 
                     width: popupIconSize
                     height: popupIconSize
@@ -870,7 +929,7 @@ PanelWindow {
                         StyledText {
                             id: headerAppNameText
                             text: notificationData ? (notificationData.appName || "") : ""
-                            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                            color: Theme.surfaceTextMedium
                             font.pixelSize: Theme.fontSizeSmall
                             font.weight: Font.Normal
                             elide: Text.ElideRight
@@ -881,7 +940,7 @@ PanelWindow {
                         StyledText {
                             id: headerSeparator
                             text: (headerAppNameText.text.length > 0 && headerTimeText.text.length > 0) ? " • " : ""
-                            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                            color: Theme.surfaceTextMedium
                             font.pixelSize: Theme.fontSizeSmall
                             font.weight: Font.Normal
                         }
@@ -889,7 +948,7 @@ PanelWindow {
                         StyledText {
                             id: headerTimeText
                             text: notificationData ? (notificationData.timeStr || "") : ""
-                            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                            color: Theme.surfaceTextMedium
                             font.pixelSize: Theme.fontSizeSmall
                             font.weight: Font.Normal
                         }
@@ -898,7 +957,7 @@ PanelWindow {
                     StyledText {
                         text: notificationData ? (notificationData.summary || "") : ""
                         color: Theme.surfaceText
-                        font.pixelSize: Theme.fontSizeMedium
+                        font.pixelSize: SettingsData.notificationSummaryFontSize || Theme.fontSizeMedium
                         font.weight: Font.Medium
                         width: parent.width
                         elide: Text.ElideRight
@@ -912,8 +971,9 @@ PanelWindow {
                         property bool hasMoreText: truncated
 
                         text: notificationData ? (notificationData.htmlBody || "") : ""
+                        textFormat: Text.StyledText
                         color: Theme.surfaceVariantText
-                        font.pixelSize: Theme.fontSizeSmall
+                        font.pixelSize: SettingsData.notificationBodyFontSize || Theme.fontSizeSmall
                         width: parent.width
                         elide: descriptionExpanded ? Text.ElideNone : Text.ElideRight
                         horizontalAlignment: Text.AlignLeft
@@ -968,8 +1028,7 @@ PanelWindow {
                 z: 15
 
                 onClicked: {
-                    if (notificationData && !win.exiting)
-                        notificationData.popup = false;
+                    dismissPopupReliably();
                 }
             }
 
@@ -1018,7 +1077,7 @@ PanelWindow {
                         width: Math.max(actionText.implicitWidth + Theme.spacingM, Theme.notificationActionMinWidth)
                         height: actionButtonHeight
                         radius: Theme.notificationButtonCornerRadius
-                        color: isHovered ? Theme.withAlpha(Theme.primary, Theme.stateLayerHover) : "transparent"
+                        color: isHovered ? Theme.withAlpha(Theme.primary, Theme.stateLayerHover) : Theme.withAlpha(Theme.primary, 0)
 
                         StyledText {
                             id: actionText
@@ -1041,8 +1100,7 @@ PanelWindow {
                             onClicked: {
                                 if (modelData && modelData.invoke)
                                     modelData.invoke();
-                                if (notificationData && !win.exiting)
-                                    notificationData.popup = false;
+                                dismissPopupReliably();
                             }
                         }
                     }
@@ -1070,7 +1128,7 @@ PanelWindow {
                 width: Math.max(clearTextLabel.implicitWidth + Theme.spacingM, Theme.notificationActionMinWidth)
                 height: actionButtonHeight
                 radius: Theme.notificationButtonCornerRadius
-                color: isHovered ? Theme.withAlpha(Theme.primary, Theme.stateLayerHover) : "transparent"
+                color: isHovered ? Theme.withAlpha(Theme.primary, Theme.stateLayerHover) : Theme.withAlpha(Theme.primary, 0)
                 z: 20
 
                 StyledText {
@@ -1110,7 +1168,12 @@ PanelWindow {
                     if (!notificationData || win.exiting)
                         return;
                     if (mouse.button === Qt.RightButton) {
-                        popupContextMenu.popup();
+                        popupContextMenuLoader.active = true;
+                        const menu = popupContextMenuLoader.item;
+                        if (menu) {
+                            const p = mapToItem(null, mouse.x, mouse.y);
+                            menu.showAt(win.margins.left + p.x, win.margins.top + p.y, win.screen);
+                        }
                     } else if (mouse.button === Qt.LeftButton) {
                         const canExpand = bodyText.hasMoreText || win.descriptionExpanded || (SettingsData.notificationPopupPrivacyMode && win.hasExpandableBody);
                         if (canExpand) {
@@ -1119,7 +1182,7 @@ PanelWindow {
                             notificationData.actions[0].invoke();
                             NotificationService.dismissNotification(notificationData);
                         } else {
-                            notificationData.popup = false;
+                            dismissPopupReliably();
                         }
                     }
                 }
@@ -1329,8 +1392,23 @@ PanelWindow {
         interval: 160
         repeat: false
         onTriggered: {
-            if (notificationData && notificationData.timer && !exiting && !_isDestroying)
+            if (notificationData && notificationData.timer && !contextMenuActive && !exiting && !_isDestroying)
                 notificationData.timer.start();
+        }
+    }
+
+    Connections {
+        target: popupContextMenuLoader.item
+        ignoreUnknownSignals: true
+
+        function onVisibleChanged() {
+            if (!notificationData?.timer || exiting || _isDestroying)
+                return;
+            if (win.contextMenuActive) {
+                notificationData.timer.stop();
+            } else if (!cardHoverHandler.hovered && notificationData.popup) {
+                notificationData.timer.restart();
+            }
         }
     }
 
@@ -1354,95 +1432,20 @@ PanelWindow {
         }
     }
 
-    Menu {
-        id: popupContextMenu
-        width: 220
-        contentHeight: 130
-        margins: -1
-        popupType: Popup.Window
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    Loader {
+        id: popupContextMenuLoader
+        active: false
 
-        background: Rectangle {
-            color: Theme.withAlpha(Theme.surfaceContainer, Theme.popupTransparency)
-            radius: Theme.cornerRadius
-            border.width: 0
-            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
-        }
-
-        MenuItem {
-            id: setNotificationRulesItem
-            text: I18n.tr("Set notification rules")
-
-            contentItem: StyledText {
-                text: parent.text
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.surfaceText
-                leftPadding: Theme.spacingS
-                verticalAlignment: Text.AlignVCenter
+        sourceComponent: NotificationContextMenu {
+            transientSurfaceTracker: transientSurfaces
+            appName: notificationData?.appName ?? ""
+            desktopEntry: notificationData?.desktopEntry ?? ""
+            onMuted: {
+                if (notificationData && !win.exiting)
+                    NotificationService.dismissNotification(notificationData);
             }
-
-            background: Rectangle {
-                color: parent.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
-                radius: Theme.cornerRadius / 2
-            }
-
-            onTriggered: {
-                const appName = notificationData?.appName || "";
-                const desktopEntry = notificationData?.desktopEntry || "";
-                SettingsData.addNotificationRuleForNotification(appName, desktopEntry);
-                PopoutService.openSettingsWithTab("notifications");
-            }
-        }
-
-        MenuItem {
-            id: muteUnmuteItem
-            readonly property bool isMuted: SettingsData.isAppMuted(notificationData?.appName || "", notificationData?.desktopEntry || "")
-            text: isMuted ? I18n.tr("Unmute popups for %1").arg(notificationData?.appName || I18n.tr("this app")) : I18n.tr("Mute popups for %1").arg(notificationData?.appName || I18n.tr("this app"))
-
-            contentItem: StyledText {
-                text: parent.text
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.surfaceText
-                leftPadding: Theme.spacingS
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            background: Rectangle {
-                color: parent.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
-                radius: Theme.cornerRadius / 2
-            }
-
-            onTriggered: {
-                const appName = notificationData?.appName || "";
-                const desktopEntry = notificationData?.desktopEntry || "";
-                if (isMuted) {
-                    SettingsData.removeMuteRuleForApp(appName, desktopEntry);
-                } else {
-                    SettingsData.addMuteRuleForApp(appName, desktopEntry);
-                    if (notificationData && !exiting)
-                        NotificationService.dismissNotification(notificationData);
-                }
-            }
-        }
-
-        MenuItem {
-            text: I18n.tr("Dismiss")
-
-            contentItem: StyledText {
-                text: parent.text
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.surfaceText
-                leftPadding: Theme.spacingS
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            background: Rectangle {
-                color: parent.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
-                radius: Theme.cornerRadius / 2
-            }
-
-            onTriggered: {
-                if (notificationData && !exiting)
+            onDismissRequested: {
+                if (notificationData && !win.exiting)
                     NotificationService.dismissNotification(notificationData);
             }
         }

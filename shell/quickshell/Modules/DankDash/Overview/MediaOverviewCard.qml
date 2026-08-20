@@ -15,10 +15,11 @@ Card {
     property real displayPosition: currentPosition
 
     readonly property real ratio: {
-        if (!activePlayer || activePlayer.length <= 0)
+        const len = MprisController.activePlayerStableLength;
+        if (!activePlayer || !activePlayer.lengthSupported || len <= 0)
             return 0;
-        const pos = displayPosition % Math.max(1, activePlayer.length);
-        const calculatedRatio = pos / activePlayer.length;
+        const pos = displayPosition % Math.max(1, len);
+        const calculatedRatio = pos / len;
         return Math.max(0, Math.min(1, calculatedRatio));
     }
 
@@ -47,14 +48,14 @@ Card {
         DankIcon {
             name: "music_note"
             size: Theme.iconSize
-            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.5)
+            color: Theme.surfaceTextSecondary
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
         StyledText {
             text: I18n.tr("No Media")
             font.pixelSize: Theme.fontSizeSmall
-            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+            color: Theme.surfaceTextMedium
             anchors.horizontalCenter: parent.horizontalCenter
         }
     }
@@ -87,7 +88,7 @@ Card {
             topPadding: Theme.spacingL
 
             StyledText {
-                text: activePlayer?.trackTitle || I18n.tr("Unknown")
+                text: MprisController.stableTitle || I18n.tr("Unknown")
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
                 color: Theme.surfaceText
@@ -98,9 +99,9 @@ Card {
             }
 
             StyledText {
-                text: activePlayer?.trackArtist || I18n.tr("Unknown Artist")
+                text: MprisController.stableArtist || I18n.tr("Unknown Artist")
                 font.pixelSize: Theme.fontSizeSmall
-                color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                color: Theme.surfaceTextMedium
                 width: parent.width
                 elide: Text.ElideRight
                 maximumLineCount: 1
@@ -130,7 +131,7 @@ Card {
                     height: 28
                     radius: 14
                     anchors.verticalCenter: playPauseButton.verticalCenter
-                    color: prevArea.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency) : "transparent"
+                    color: prevArea.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency) : Theme.withAlpha(Theme.surfaceContainerHigh, 0)
 
                     DankIcon {
                         anchors.centerIn: parent
@@ -153,13 +154,13 @@ Card {
                     width: 32
                     height: 32
                     radius: 16
-                    color: Theme.primary
+                    color: MediaAccentService.accent
 
                     DankIcon {
                         anchors.centerIn: parent
                         name: activePlayer?.playbackState === MprisPlaybackState.Playing ? "pause" : "play_arrow"
                         size: 16
-                        color: Theme.background
+                        color: MediaAccentService.onAccent
                     }
 
                     MouseArea {
@@ -175,7 +176,7 @@ Card {
                     height: 28
                     radius: 14
                     anchors.verticalCenter: playPauseButton.verticalCenter
-                    color: nextArea.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency) : "transparent"
+                    color: nextArea.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency) : Theme.withAlpha(Theme.surfaceContainerHigh, 0)
 
                     DankIcon {
                         anchors.centerIn: parent
@@ -189,7 +190,7 @@ Card {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: activePlayer?.next()
+                        onClicked: MprisController.next()
                     }
                 }
             }

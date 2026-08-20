@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import Quickshell
 import qs.Common
@@ -20,9 +22,7 @@ import qs.Widgets
 import qs.Modules.Notifications.Popup
 import qs.Modules.OSD
 import qs.Modules.ProcessList
-import qs.Modules.DankBar
 import qs.Modules.DankBar.Popouts
-import qs.Modules.Frame
 import qs.Modules.WorkspaceOverlays
 import qs.Modules.Settings.DisplayConfig
 import qs.Services
@@ -30,8 +30,11 @@ import qs.Services
 Item {
     id: root
     readonly property var log: Log.scoped("DMSShell")
+    readonly property var _sessionsServiceRef: SessionsService
 
-    property bool osdSurfacesLoaded: true
+    property var core: null
+
+    property bool osdSurfacesLoaded: false
     property int pendingOsdResumeReloads: 0
 
     function recreateOsdSurfaces() {
@@ -39,39 +42,6 @@ Item {
         osdSurfacesLoaded = false;
         osdSurfaceReloadTimer.restart();
     }
-
-    Instantiator {
-        id: daemonPluginInstantiator
-        asynchronous: true
-        model: Object.keys(PluginService.pluginDaemonComponents)
-
-        delegate: Loader {
-            id: daemonLoader
-            property string pluginId: modelData
-            sourceComponent: PluginService.pluginDaemonComponents[pluginId]
-
-            onLoaded: {
-                if (item) {
-                    item.pluginService = PluginService;
-                    if (item.popoutService !== undefined) {
-                        item.popoutService = PopoutService;
-                    }
-                    item.pluginId = pluginId;
-                    log.info("Daemon plugin loaded:", pluginId);
-                }
-            }
-        }
-    }
-
-    Loader {
-        id: blurredWallpaperBackgroundLoader
-        active: SettingsData.blurredWallpaperLayer && CompositorService.isNiri
-        asynchronous: false
-
-        sourceComponent: BlurredWallpaperBackground {}
-    }
-
-    WallpaperBackground {}
 
     DesktopWidgetLayer {}
 
@@ -85,6 +55,7 @@ Item {
         delegate: Loader {
             id: fadeWindowLoader
             required property var modelData
+            readonly property FadeToLockWindow loadedWindow: item as FadeToLockWindow
             active: SettingsData.fadeToLockEnabled
             asynchronous: false
 
@@ -96,23 +67,29 @@ Item {
                 }
 
                 onFadeCancelled: {
-                    log.debug("Fade to lock cancelled by user on screen:", fadeWindowLoader.modelData.name);
+                    root.log.debug("Fade to lock cancelled by user on screen:", fadeWindowLoader.modelData.name);
                 }
             }
 
             Connections {
                 target: IdleService
-                enabled: fadeWindowLoader.item !== null
+                enabled: fadeWindowLoader.loadedWindow !== null
 
                 function onFadeToLockRequested() {
-                    if (fadeWindowLoader.item) {
-                        fadeWindowLoader.item.startFade();
+                    if (fadeWindowLoader.loadedWindow) {
+                        fadeWindowLoader.loadedWindow.startFade();
                     }
                 }
 
                 function onCancelFadeToLock() {
-                    if (fadeWindowLoader.item) {
-                        fadeWindowLoader.item.cancelFade();
+                    if (fadeWindowLoader.loadedWindow) {
+                        fadeWindowLoader.loadedWindow.cancelFade();
+                    }
+                }
+
+                function onDismissFadeToLock() {
+                    if (fadeWindowLoader.loadedWindow) {
+                        fadeWindowLoader.loadedWindow.dismiss();
                     }
                 }
             }
@@ -125,6 +102,7 @@ Item {
         delegate: Loader {
             id: fadeDpmsWindowLoader
             required property var modelData
+            readonly property FadeToDpmsWindow loadedWindow: item as FadeToDpmsWindow
             active: SettingsData.fadeToDpmsEnabled
             asynchronous: false
 
@@ -136,117 +114,55 @@ Item {
                 }
 
                 onFadeCancelled: {
-                    log.debug("Fade to DPMS cancelled by user on screen:", fadeDpmsWindowLoader.modelData.name);
+                    root.log.debug("Fade to DPMS cancelled by user on screen:", fadeDpmsWindowLoader.modelData.name);
                 }
             }
 
             Connections {
                 target: IdleService
-                enabled: fadeDpmsWindowLoader.item !== null
+                enabled: fadeDpmsWindowLoader.loadedWindow !== null
 
                 function onFadeToDpmsRequested() {
-                    if (fadeDpmsWindowLoader.item) {
-                        fadeDpmsWindowLoader.item.startFade();
+                    if (fadeDpmsWindowLoader.loadedWindow) {
+                        fadeDpmsWindowLoader.loadedWindow.startFade();
                     }
                 }
 
                 function onCancelFadeToDpms() {
-                    if (fadeDpmsWindowLoader.item) {
-                        fadeDpmsWindowLoader.item.cancelFade();
+                    if (fadeDpmsWindowLoader.loadedWindow) {
+                        fadeDpmsWindowLoader.loadedWindow.cancelFade();
                     }
                 }
 
                 function onRequestMonitorOn() {
-                    if (!fadeDpmsWindowLoader.item)
+                    if (!fadeDpmsWindowLoader.loadedWindow)
                         return;
-                    fadeDpmsWindowLoader.item.cancelFade();
+                    fadeDpmsWindowLoader.loadedWindow.cancelFade();
+                }
+
+                function onMonitorsOffChanged() {
+                    if (IdleService.monitorsOff)
+                        return;
+                    if (!fadeDpmsWindowLoader.loadedWindow)
+                        return;
+                    fadeDpmsWindowLoader.loadedWindow.dismiss();
                 }
             }
-        }
-    }
-
-    property bool barSurfacesLoaded: true
-
-    function recreateBarSurfaces() {
-        if (barSurfacesLoaded)
-            barSurfacesLoaded = false;
-        barSurfaceReloadAction.schedule();
-    }
-
-    DeferredAction {
-        id: barSurfaceReloadAction
-        onTriggered: root.barSurfacesLoaded = true
-    }
-
-    property string _barLayoutStateJson: {
-        if (!barSurfacesLoaded)
-            return "[]";
-        const configs = SettingsData.barConfigs;
-        const mapped = configs.map(c => ({
-                    id: c.id,
-                    position: c.position,
-                    autoHide: c.autoHide,
-                    visible: c.visible
-                })).sort((a, b) => {
-            const aVertical = a.position === SettingsData.Position.Left || a.position === SettingsData.Position.Right;
-            const bVertical = b.position === SettingsData.Position.Left || b.position === SettingsData.Position.Right;
-            if (aVertical !== bVertical) {
-                return aVertical - bVertical;
-            }
-            return String(a.id).localeCompare(String(b.id));
-        });
-        return JSON.stringify(mapped);
-    }
-
-    on_BarLayoutStateJsonChanged: {
-        if (typeof dockRecreateDebounce !== "undefined") {
-            dockRecreateDebounce.restart();
         }
     }
 
     Connections {
-        target: SettingsData
-        function onFrameEnabledChanged() {
-            root.recreateBarSurfaces();
-        }
-        function onConnectedFrameModeActiveChanged() {
-            root.recreateBarSurfaces();
-        }
-        function onForceDankBarLayoutRefresh() {
-            root.recreateBarSurfaces();
-        }
-    }
+        target: root.core
 
-    Frame {}
-
-    Repeater {
-        id: dankBarRepeater
-        model: ScriptModel {
-            id: barRepeaterModel
-            values: JSON.parse(root._barLayoutStateJson)
+        function on_BarLayoutStateJsonChanged() {
+            dockRecreateDebounce.restart();
         }
 
-        property var hyprlandOverviewLoaderRef: hyprlandOverviewLoader
-
-        delegate: Loader {
-            id: barLoader
-            required property var modelData
-            property var barConfig: SettingsData.barConfigs.find(cfg => cfg.id === modelData.id) || null
-            active: root.barSurfacesLoaded && (barConfig?.enabled ?? false)
-            asynchronous: false
-
-            sourceComponent: DankBar {
-                barConfig: barLoader.barConfig
-                hyprlandOverviewLoader: dankBarRepeater.hyprlandOverviewLoaderRef
-
-                onColorPickerRequested: {
-                    if (colorPickerModal.shouldBeVisible) {
-                        colorPickerModal.close();
-                    } else {
-                        colorPickerModal.show();
-                    }
-                }
-            }
+        function onSurfaceRecoveryPass() {
+            root.dockEnabled = false;
+            Qt.callLater(() => {
+                root.dockEnabled = true;
+            });
         }
     }
 
@@ -301,13 +217,22 @@ Item {
         onTriggered: root.osdSurfacesLoaded = true
     }
 
+    Timer {
+        id: osdStartupTimer
+        interval: 1000
+        repeat: false
+        onTriggered: root.osdSurfacesLoaded = true
+    }
+
     Component.onCompleted: {
-        dockRecreateDebounce.start();
-        // Force PolkitService singleton to initialize
-        PolkitService.polkitAvailable;
-        // Force DisplayConfigState singleton to initialize so auto-config runs at startup
-        DisplayConfigState.hasOutputBackend;
+        dockEnabled = true;
         loginSoundTimer.start();
+        osdStartupTimer.start();
+
+        // These are dummy references just to trigger the singletons onCompleted to trigger
+        PolkitService.polkitAvailable;
+        DisplayConfigState.hasOutputBackend;
+        PortalService.systemColorScheme;
     }
 
     Loader {
@@ -438,9 +363,7 @@ Item {
     Variants {
         model: SettingsData.notificationFocusedMonitor ? Quickshell.screens : SettingsData.getFilteredScreens("notifications")
 
-        delegate: NotificationPopupManager {
-            modelData: item
-        }
+        delegate: NotificationPopupManager {}
     }
 
     LazyLoader {
@@ -474,6 +397,7 @@ Item {
     LazyLoader {
         id: wifiPasswordModalLoader
         active: false
+        readonly property WifiPasswordModal loadedModal: item as WifiPasswordModal
 
         Component.onCompleted: {
             PopoutService.wifiPasswordModalLoader = wifiPasswordModalLoader;
@@ -508,6 +432,7 @@ Item {
     LazyLoader {
         id: polkitAuthModalLoader
         active: false
+        readonly property PolkitAuthModal loadedModal: item as PolkitAuthModal
 
         PolkitAuthModal {
             id: polkitAuthModal
@@ -526,8 +451,8 @@ Item {
             if (PopoutService.systemUpdatePopout?.shouldBeVisible)
                 return;
             polkitAuthModalLoader.active = true;
-            if (polkitAuthModalLoader.item)
-                polkitAuthModalLoader.item.show();
+            if (polkitAuthModalLoader.loadedModal)
+                polkitAuthModalLoader.loadedModal.show();
         }
     }
 
@@ -546,24 +471,20 @@ Item {
         target: NetworkService
 
         function onCredentialsNeeded(token, ssid, setting, fields, hints, reason, connType, connName, vpnService, fieldsInfo) {
-            const now = Date.now();
-            const timeSinceLastPrompt = now - lastCredentialsTime;
+            const alreadyShown = wifiPasswordModalLoader.loadedModal && wifiPasswordModalLoader.loadedModal.shouldBeVisible;
+            if (alreadyShown && token === root.lastCredentialsToken)
+                return;
 
             wifiPasswordModalLoader.active = true;
-            if (!wifiPasswordModalLoader.item)
+            if (!wifiPasswordModalLoader.loadedModal)
                 return;
 
-            if (wifiPasswordModalLoader.item.visible && timeSinceLastPrompt < 1000) {
-                NetworkService.cancelCredentials(lastCredentialsToken);
-                lastCredentialsToken = token;
-                lastCredentialsTime = now;
-                wifiPasswordModalLoader.item.showFromPrompt(token, ssid, setting, fields, hints, reason, connType, connName, vpnService, fieldsInfo);
-                return;
-            }
+            if (alreadyShown && root.lastCredentialsToken !== "" && root.lastCredentialsToken !== token)
+                NetworkService.cancelCredentials(root.lastCredentialsToken);
 
-            lastCredentialsToken = token;
-            lastCredentialsTime = now;
-            wifiPasswordModalLoader.item.showFromPrompt(token, ssid, setting, fields, hints, reason, connType, connName, vpnService, fieldsInfo);
+            root.lastCredentialsToken = token;
+            root.lastCredentialsTime = Date.now();
+            wifiPasswordModalLoader.loadedModal.showFromPrompt(token, ssid, setting, fields, hints, reason, connType, connName, vpnService, fieldsInfo);
         }
     }
 
@@ -726,6 +647,25 @@ Item {
     }
 
     LazyLoader {
+        id: spotlightBarModalLoader
+
+        active: false
+
+        Component.onCompleted: {
+            PopoutService.spotlightBarModalLoader = spotlightBarModalLoader;
+        }
+
+        DankLauncherV2ModalSpotlight {
+            id: spotlightBarModal
+
+            Component.onCompleted: {
+                PopoutService.spotlightBarModal = spotlightBarModal;
+                PopoutService._onSpotlightBarModalLoaded();
+            }
+        }
+    }
+
+    LazyLoader {
         id: clipboardHistoryPopoutLoader
 
         active: false
@@ -841,10 +781,10 @@ Item {
         }
 
         function onAppPickerRequested(data) {
-            log.debug("App picker requested with data:", JSON.stringify(data));
+            root.log.debug("App picker requested with data:", JSON.stringify(data));
 
             if (!data || !data.target) {
-                log.warn("Invalid app picker request data");
+                root.log.warn("Invalid app picker request data");
                 return;
             }
 
@@ -961,16 +901,26 @@ Item {
 
         delegate: DankSlideout {
             id: notepadSlideout
-            modelData: item
             title: I18n.tr("Notepad")
             slideoutWidth: 480
             expandable: true
             expandedWidthValue: 960
+            edgeGap: SettingsData.notepadEffectiveEdgeGap
+            slideEdge: SettingsData.notepadSlideoutSide
+
+            onIsVisibleChanged: {
+                if (isVisible)
+                    PopoutService.notepadPopout?.hide();
+            }
 
             content: Component {
                 Notepad {
                     slideout: notepadSlideout
                     onHideRequested: notepadSlideout.hide()
+                    onPopoutRequested: {
+                        notepadSlideout.hide();
+                        PopoutService.openNotepadPopout();
+                    }
                 }
             }
 
@@ -988,14 +938,37 @@ Item {
     }
 
     LazyLoader {
+        id: notepadPopoutLoader
+        active: false
+
+        Component.onCompleted: {
+            PopoutService.notepadPopoutLoader = notepadPopoutLoader;
+        }
+
+        onActiveChanged: {
+            if (active && item) {
+                PopoutService.notepadPopout = item;
+                PopoutService._onNotepadPopoutLoaded();
+            }
+        }
+
+        NotepadPopoutWindow {}
+    }
+
+    LazyLoader {
         id: powerMenuModalLoader
 
         active: false
+
+        Component.onCompleted: {
+            PopoutService.powerMenuModalLoader = powerMenuModalLoader;
+        }
 
         PowerMenuModal {
             id: powerMenuModal
 
             onPowerActionRequested: (action, title, message) => {
+                PopoutService.closeControlCenter();
                 switch (action) {
                 case "logout":
                     SessionService.logout();
@@ -1016,12 +989,32 @@ Item {
             }
 
             onLockRequested: {
+                PopoutService.closeControlCenter();
                 lock.activate();
+            }
+
+            onSwitchUserRequested: {
+                switchUserModalLoader.active = true;
+                Qt.callLater(() => {
+                    if (switchUserModalLoader.loadedModal)
+                        switchUserModalLoader.loadedModal.showFromPowerMenu();
+                });
             }
 
             Component.onCompleted: {
                 PopoutService.powerMenuModal = powerMenuModal;
             }
+        }
+    }
+
+    LazyLoader {
+        id: switchUserModalLoader
+
+        active: false
+        readonly property SwitchUserModal loadedModal: item as SwitchUserModal
+
+        SwitchUserModal {
+            id: switchUserModal
         }
     }
 
@@ -1039,6 +1032,24 @@ Item {
         }
     }
 
+    LazyLoader {
+        id: powerProfileModalLoader
+
+        active: false
+
+        PowerProfileModal {
+            id: powerProfileModal
+
+            Component.onCompleted: {
+                PopoutService.powerProfileModal = powerProfileModal;
+            }
+        }
+
+        Component.onCompleted: {
+            PopoutService.powerProfileModalLoader = powerProfileModalLoader;
+        }
+    }
+
     DMSShellIPC {
         powerMenuModalLoader: powerMenuModalLoader
         processListModalLoader: processListModalLoader
@@ -1046,8 +1057,8 @@ Item {
         dankDashPopoutLoader: dankDashPopoutLoader
         notepadSlideoutVariants: notepadSlideoutVariants
         hyprKeybindsModalLoader: hyprKeybindsModalLoader
-        dankBarRepeater: dankBarRepeater
-        hyprlandOverviewLoader: hyprlandOverviewLoader
+        dankBarRepeater: root.core?.dankBarRepeater ?? null
+        hyprlandOverviewLoader: root.core?.hyprlandOverviewLoader ?? null
         workspaceRenameModalLoader: workspaceRenameModalLoader
         windowRuleModalLoader: windowRuleModalLoader
     }
@@ -1056,7 +1067,6 @@ Item {
         model: SettingsData.getFilteredScreens("toast")
 
         delegate: Toast {
-            modelData: item
             visible: ToastService.toastVisible
         }
     }
@@ -1071,83 +1081,57 @@ Item {
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: VolumeOSD {
-                        modelData: item
-                    }
+                    delegate: VolumeOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: MediaVolumeOSD {
-                        modelData: item
-                    }
+                    delegate: MediaVolumeOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: MediaPlaybackOSD {
-                        modelData: item
-                    }
+                    delegate: MediaPlaybackOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: MicMuteOSD {
-                        modelData: item
-                    }
+                    delegate: MicVolumeOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: BrightnessOSD {
-                        modelData: item
-                    }
+                    delegate: BrightnessOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: IdleInhibitorOSD {
-                        modelData: item
-                    }
+                    delegate: IdleInhibitorOSD {}
                 }
 
                 Variants {
                     model: SettingsData.osdPowerProfileEnabled ? SettingsData.getFilteredScreens("osd") : []
 
-                    delegate: PowerProfileOSD {
-                        modelData: item
-                    }
+                    delegate: PowerProfileOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: CapsLockOSD {
-                        modelData: item
-                    }
+                    delegate: CapsLockOSD {}
                 }
 
                 Variants {
                     model: SettingsData.getFilteredScreens("osd")
 
-                    delegate: AudioOutputOSD {
-                        modelData: item
-                    }
+                    delegate: AudioOutputOSD {}
                 }
             }
-        }
-    }
-
-    LazyLoader {
-        id: hyprlandOverviewLoader
-        active: CompositorService.isHyprland
-        component: HyprlandOverview {
-            id: hyprlandOverview
         }
     }
 
@@ -1162,6 +1146,7 @@ Item {
     Loader {
         id: greeterLoader
         active: false
+        readonly property GreeterModal loadedModal: item as GreeterModal
         sourceComponent: GreeterModal {
             onGreeterCompleted: greeterLoader.active = false
             Component.onCompleted: show()
@@ -1170,8 +1155,8 @@ Item {
         Connections {
             target: FirstLaunchService
             function onGreeterRequested() {
-                if (greeterLoader.active && greeterLoader.item) {
-                    greeterLoader.item.show();
+                if (greeterLoader.active && greeterLoader.loadedModal) {
+                    greeterLoader.loadedModal.show();
                     return;
                 }
                 greeterLoader.active = true;
@@ -1182,6 +1167,7 @@ Item {
     Loader {
         id: changelogLoader
         active: false
+        readonly property ChangelogModal loadedModal: item as ChangelogModal
         sourceComponent: ChangelogModal {
             onChangelogDismissed: changelogLoader.active = false
             Component.onCompleted: show()
@@ -1190,8 +1176,8 @@ Item {
         Connections {
             target: ChangelogService
             function onChangelogRequested() {
-                if (changelogLoader.active && changelogLoader.item) {
-                    changelogLoader.item.show();
+                if (changelogLoader.active && changelogLoader.loadedModal) {
+                    changelogLoader.loadedModal.show();
                     return;
                 }
                 changelogLoader.active = true;

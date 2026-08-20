@@ -114,6 +114,32 @@ Singleton {
     property var monitorWallpapersLight: ({})
     property var monitorWallpapersDark: ({})
     property var monitorWallpaperFillModes: ({})
+
+    // Map: screenName -> { scrollX, scrollY } (0-100 range, like workspace percentage)
+    property var monitorScrollPositions: ({})
+
+    function setMonitorScrollPosition(screenName, scrollX, scrollY) {
+        var newPositions = Object.assign({}, monitorScrollPositions);
+        newPositions[screenName] = {
+            scrollX: scrollX,
+            scrollY: scrollY
+        };
+        monitorScrollPositions = newPositions;
+    }
+
+    function getMonitorScrollPosition(screenName) {
+        return monitorScrollPositions[screenName] || {
+            scrollX: 50,
+            scrollY: 50
+        };
+    }
+
+    function clearMonitorScrollPosition(screenName) {
+        var newPositions = Object.assign({}, monitorScrollPositions);
+        delete newPositions[screenName];
+        monitorScrollPositions = newPositions;
+    }
+
     property string wallpaperTransition: "fade"
     readonly property var availableWallpaperTransitions: ["none", "fade", "wipe", "disc", "stripes", "iris bloom", "pixelate", "portal"]
     property var includedTransitions: availableWallpaperTransitions.filter(t => t !== "none")
@@ -154,6 +180,9 @@ Singleton {
     property var trayItemOrder: []
     property var recentColors: []
     property bool showThirdPartyPlugins: false
+    property bool pluginBrowserInstalledFirst: false
+    property bool pluginBrowserHideInstalled: true
+    property string pluginBrowserSortMode: "default"
     property string launchPrefix: ""
     property string lastBrightnessDevice: ""
     property var brightnessExponentialDevices: ({})
@@ -186,7 +215,10 @@ Singleton {
     property string locale: ""
     property string timeLocale: ""
 
+    property string notepadLastMode: ""
+
     property string launcherLastMode: "all"
+    property string launcherLastFileSearchType: "all"
     property string launcherLastQuery: ""
     property var launcherQueryHistory: []
     property string appDrawerLastMode: "apps"
@@ -963,6 +995,25 @@ Singleton {
         saveSettings();
     }
 
+    function setPluginBrowserInstalledFirst(enabled) {
+        pluginBrowserInstalledFirst = enabled;
+        saveSettings();
+    }
+
+    function setPluginBrowserHideInstalled(enabled) {
+        pluginBrowserHideInstalled = enabled;
+        saveSettings();
+    }
+
+    function setPluginBrowserSortMode(mode) {
+        if (mode === "type" || mode === "contributor")
+            mode = "author";
+        if (mode !== "default" && mode !== "name" && mode !== "author" && mode !== "category")
+            mode = "default";
+        pluginBrowserSortMode = mode;
+        saveSettings();
+    }
+
     function setLaunchPrefix(prefix) {
         launchPrefix = prefix;
         saveSettings();
@@ -1173,8 +1224,26 @@ Singleton {
         I18n.useLocale(locale, locale.startsWith("en") ? "" : I18n.folder + "/" + locale + ".json");
     }
 
+    function setNotepadLastMode(mode) {
+        if (notepadLastMode === mode)
+            return;
+        notepadLastMode = mode;
+        saveSettings();
+    }
+
     function setLauncherLastMode(mode) {
         launcherLastMode = mode;
+        saveSettings();
+    }
+
+    function getLauncherRestoreMode() {
+        if (!SettingsData.rememberLastMode)
+            return "all";
+        return launcherLastMode || "all";
+    }
+
+    function setLauncherLastFileSearchType(type) {
+        launcherLastFileSearchType = type;
         saveSettings();
     }
 
@@ -1183,10 +1252,11 @@ Singleton {
         saveSettings();
     }
 
-    function addLauncherHistory(query) {
+    function addLauncherHistory(query, skipLastQuery) {
         let q = query.trim();
 
-        setLauncherLastQuery(q);
+        if (!skipLastQuery)
+            setLauncherLastQuery(q);
 
         if (!q)
             return;
@@ -1341,13 +1411,27 @@ Singleton {
         }
     }
 
+    readonly property string _greeterCacheDir: Quickshell.env("DMS_GREET_CFG_DIR") || "/var/cache/dms-greeter"
+
+    property string greeterSessionBaseDir: root._greeterCacheDir
+
+    function setGreeterSessionBaseDir(dir) {
+        const next = dir || root._greeterCacheDir;
+        if (greeterSessionBaseDir === next)
+            return;
+        greeterSessionBaseDir = next;
+        if (isGreeterMode)
+            greeterSessionFile.reload();
+    }
+
+    function resetGreeterSessionBaseDir() {
+        setGreeterSessionBaseDir(root._greeterCacheDir);
+    }
+
     FileView {
         id: greeterSessionFile
 
-        path: {
-            const greetCfgDir = Quickshell.env("DMS_GREET_CFG_DIR") || "/var/cache/dms-greeter";
-            return greetCfgDir + "/session.json";
-        }
+        path: root.greeterSessionBaseDir ? (root.greeterSessionBaseDir + "/session.json") : ""
         preload: isGreeterMode
         blockLoading: false
         blockWrites: true

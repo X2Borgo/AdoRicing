@@ -42,6 +42,18 @@ Singleton {
     property bool suppressNextConfigToast: false
     property bool matugenSuppression: false
     property bool configGenerationPending: false
+    property int _layoutRequestRevision: 0
+    property int _layoutAppliedRevision: 0
+    property int _frameTransitionRevision: 0
+    property int _awaitingLayoutReloadRevision: 0
+    property string _lastGeneratedAlttabContent: ""
+    readonly property bool frameLayoutReady: _layoutAppliedRevision >= _frameTransitionRevision
+
+    // dms/layout.kdl is the source of truth for xray; parsed once before the first regeneration
+    property bool layoutXrayEnabled: true
+    property bool layoutBarXrayEnabled: true
+    property bool _layoutXrayLoaded: false
+    property bool _layoutXrayLoading: false
 
     readonly property string screenshotsDir: Paths.strip(StandardPaths.writableLocation(StandardPaths.PicturesLocation)) + "/Screenshots"
     property string pendingScreenshotPath: ""
@@ -58,7 +70,10 @@ Singleton {
         validateProcess.running = true;
     }
 
-    Component.onCompleted: fetchOutputs()
+    Component.onCompleted: {
+        fetchOutputs();
+        Paths.mkdir(screenshotsDir);
+    }
 
     Timer {
         id: suppressToastTimer
@@ -72,9 +87,8 @@ Singleton {
         onTriggered: root.matugenSuppression = false
     }
 
-    Timer {
-        id: configGenerationDebounce
-        interval: 100
+    DeferredAction {
+        id: configGenerationAction
         onTriggered: root.doGenerateNiriLayoutConfig()
     }
 
@@ -117,13 +131,20 @@ Singleton {
         id: writeConfigProcess
         property string configContent: ""
         property string configPath: ""
+        property int requestRevision: 0
 
         onExited: exitCode => {
             if (exitCode === 0) {
                 log.info("Generated layout config at", configPath);
-                return;
+            } else {
+                if (root._awaitingLayoutReloadRevision === requestRevision)
+                    root._awaitingLayoutReloadRevision = 0;
+                // Best-effort ack so a failed write can't wedge frame transitions
+                root._layoutAppliedRevision = Math.max(root._layoutAppliedRevision, requestRevision);
+                log.warn("Failed to write layout config, exit code:", exitCode);
             }
-            log.warn("Failed to write layout config, exit code:", exitCode);
+            if (root.configGenerationPending && root._awaitingLayoutReloadRevision <= root._layoutAppliedRevision)
+                configGenerationAction.schedule();
         }
     }
 
@@ -417,26 +438,31 @@ Singleton {
     function handleWindowFocusChanged(data) {
         const focusedWindowId = data.id;
 
+        // Only clone windows whose focus flag changes; skip reassignment if nothing changed.
         let focusedWindow = null;
-        const updatedWindows = [];
+        let changed = false;
+        const updatedWindows = new Array(windows.length);
 
         for (var i = 0; i < windows.length; i++) {
             const w = windows[i];
-            const updatedWindow = {};
-
-            for (let prop in w) {
-                updatedWindow[prop] = w[prop];
+            const isFocused = w.id === focusedWindowId;
+            if (!!w.is_focused === isFocused) {
+                updatedWindows[i] = w;
+                if (isFocused)
+                    focusedWindow = w;
+                continue;
             }
-
-            updatedWindow.is_focused = (w.id === focusedWindowId);
-            if (updatedWindow.is_focused) {
+            const updatedWindow = Object.assign({}, w, {
+                "is_focused": isFocused
+            });
+            if (isFocused)
                 focusedWindow = updatedWindow;
-            }
-
-            updatedWindows.push(updatedWindow);
+            updatedWindows[i] = updatedWindow;
+            changed = true;
         }
 
-        windows = updatedWindows;
+        if (changed)
+            windows = updatedWindows;
 
         if (focusedWindow) {
             const ws = root.workspaces[focusedWindow.workspace_id];
@@ -472,26 +498,29 @@ Singleton {
             setWorkspaces(updatedWorkspaces);
         }
 
-        const updatedWindows = [];
+        let changed = false;
+        const updatedWindows = new Array(windows.length);
 
         for (var i = 0; i < windows.length; i++) {
             const w = windows[i];
-            const updatedWindow = {};
-
-            for (let prop in w) {
-                updatedWindow[prop] = w[prop];
-            }
-
+            let isFocused;
             if (data.active_window_id !== null && data.active_window_id !== undefined) {
-                updatedWindow.is_focused = (w.id == data.active_window_id);
+                isFocused = (w.id == data.active_window_id);
             } else {
-                updatedWindow.is_focused = w.workspace_id == data.workspace_id ? false : w.is_focused;
+                isFocused = w.workspace_id == data.workspace_id ? false : !!w.is_focused;
             }
-
-            updatedWindows.push(updatedWindow);
+            if (!!w.is_focused === isFocused) {
+                updatedWindows[i] = w;
+                continue;
+            }
+            updatedWindows[i] = Object.assign({}, w, {
+                "is_focused": isFocused
+            });
+            changed = true;
         }
 
-        windows = updatedWindows;
+        if (changed)
+            windows = updatedWindows;
     }
 
     function handleWindowsChanged(data) {
@@ -559,12 +588,25 @@ Singleton {
     function handleConfigLoaded(data) {
         if (data.failed) {
             validateProcess.running = true;
+            // Best-effort ack: a rejected reload must not wedge frame transitions
+            if (_awaitingLayoutReloadRevision > _layoutAppliedRevision) {
+                _layoutAppliedRevision = _awaitingLayoutReloadRevision;
+                _awaitingLayoutReloadRevision = 0;
+            }
+            if (configGenerationPending)
+                configGenerationAction.schedule();
             return;
         }
 
         configValidationOutput = "";
         ToastService.dismissCategory("niri-config");
         fetchOutputs();
+        if (_awaitingLayoutReloadRevision > _layoutAppliedRevision) {
+            _layoutAppliedRevision = _awaitingLayoutReloadRevision;
+            _awaitingLayoutReloadRevision = 0;
+        }
+        if (configGenerationPending)
+            configGenerationAction.schedule();
         configReloaded();
 
         if (hasInitialConnection && !suppressConfigToast && !suppressNextConfigToast && !matugenSuppression) {
@@ -702,7 +744,19 @@ Singleton {
         });
     }
 
-    function moveColumnLeft() {
+    function focusMonitor(outputName) {
+        return send({
+            "Action": {
+                "FocusMonitor": {
+                    "output": outputName
+                }
+            }
+        });
+    }
+
+    function moveColumnLeft(outputName) {
+        if (outputName && outputName !== currentOutput)
+            focusMonitor(outputName);
         return send({
             "Action": {
                 "FocusColumnLeft": {}
@@ -710,7 +764,9 @@ Singleton {
         });
     }
 
-    function moveColumnRight() {
+    function moveColumnRight(outputName) {
+        if (outputName && outputName !== currentOutput)
+            focusMonitor(outputName);
         return send({
             "Action": {
                 "FocusColumnRight": {}
@@ -793,6 +849,7 @@ Singleton {
     }
 
     function screenshot() {
+        Paths.mkdir(screenshotsDir);
         pendingScreenshotPath = "";
         const timestamp = Date.now();
         const path = `${screenshotsDir}/dms-screenshot-${timestamp}.png`;
@@ -809,6 +866,7 @@ Singleton {
     }
 
     function screenshotScreen() {
+        Paths.mkdir(screenshotsDir);
         pendingScreenshotPath = "";
         const timestamp = Date.now();
         const path = `${screenshotsDir}/dms-screenshot-${timestamp}.png`;
@@ -826,6 +884,7 @@ Singleton {
     }
 
     function screenshotWindow() {
+        Paths.mkdir(screenshotsDir);
         pendingScreenshotPath = "";
         const timestamp = Date.now();
         const path = `${screenshotsDir}/dms-screenshot-${timestamp}.png`;
@@ -1069,15 +1128,55 @@ Singleton {
         return _matchAndEnrichToplevels(toplevels, windows.filter(nw => outputWorkspaceIds.has(nw.workspace_id)));
     }
 
-    function generateNiriLayoutConfig() {
-        if (!CompositorService.isNiri || configGenerationPending)
+    function setLayoutXray(enabled) {
+        layoutXrayEnabled = enabled;
+        _layoutXrayLoaded = true;
+        generateNiriLayoutConfig();
+    }
+
+    function setLayoutBarXray(enabled) {
+        layoutBarXrayEnabled = enabled;
+        _layoutXrayLoaded = true;
+        generateNiriLayoutConfig();
+    }
+
+    function loadLayoutXrayState() {
+        if (_layoutXrayLoading)
             return;
+        _layoutXrayLoading = true;
+        const configDir = Paths.strip(StandardPaths.writableLocation(StandardPaths.ConfigLocation));
+        Proc.runCommand("niri-read-layout-xray", ["cat", configDir + "/niri/dms/layout.kdl"], (output, exitCode) => {
+            _layoutXrayLoading = false;
+            if (!_layoutXrayLoaded) {
+                const content = exitCode === 0 ? output : "";
+                layoutXrayEnabled = !content.includes("xray false");
+                layoutBarXrayEnabled = !content.includes("// bar-xray off");
+                _layoutXrayLoaded = true;
+            }
+            if (configGenerationPending)
+                configGenerationAction.schedule();
+        });
+    }
+
+    function generateNiriLayoutConfig(frameTransition) {
+        if (!CompositorService.isNiri)
+            return;
+        _layoutRequestRevision++;
+        if (frameTransition === true)
+            _frameTransitionRevision = _layoutRequestRevision;
         suppressNextToast();
         configGenerationPending = true;
-        configGenerationDebounce.restart();
+        configGenerationAction.schedule();
     }
 
     function doGenerateNiriLayoutConfig() {
+        if (writeConfigProcess.running || _awaitingLayoutReloadRevision > _layoutAppliedRevision)
+            return;
+        if (!_layoutXrayLoaded) {
+            loadLayoutXrayState();
+            return;
+        }
+        configGenerationPending = false;
         log.debug("Generating layout config...");
 
         const defaultRadius = typeof SettingsData !== "undefined" ? SettingsData.cornerRadius : 12;
@@ -1085,39 +1184,62 @@ Singleton {
         const defaultBorderSize = 2;
 
         const cornerRadius = (typeof SettingsData !== "undefined" && SettingsData.niriLayoutRadiusOverride >= 0) ? SettingsData.niriLayoutRadiusOverride : defaultRadius;
-        const gaps = (typeof SettingsData !== "undefined" && SettingsData.niriLayoutGapsOverride >= 0) ? SettingsData.niriLayoutGapsOverride : defaultGaps;
+        const gapsOverride = typeof SettingsData !== "undefined" ? SettingsData.niriLayoutGapsOverride : -1;
+        const manageGaps = gapsOverride !== -2;
+        const gaps = gapsOverride >= 0 ? gapsOverride : defaultGaps;
         const borderSize = (typeof SettingsData !== "undefined" && SettingsData.niriLayoutBorderSize >= 0) ? SettingsData.niriLayoutBorderSize : defaultBorderSize;
+        const frameEnabled = typeof SettingsData !== "undefined" && SettingsData.frameEnabled;
+        // dms:frame only in separate mode — connected-mode frame blur overlaps windows via popouts/arcs
+        const excludeNamespaces = ["dms:bar"];
+        if (frameEnabled && SettingsData.frameMode !== "connected")
+            excludeNamespaces.push("dms:frame");
+
+        // Xray is niri's default blur, so only the off state needs a rule.
+        let xrayRules = "";
+        if (!layoutXrayEnabled) {
+            const excludeLines = layoutBarXrayEnabled ? excludeNamespaces.map(ns => `\n    exclude namespace="^${ns}$"`).join("") : "";
+            xrayRules += `
+
+layer-rule {${excludeLines}
+    background-effect {
+        xray false
+    }
+}`;
+        }
+        // Marker persists the preference even while the rule has no target
+        if (!layoutBarXrayEnabled)
+            xrayRules += `
+
+// bar-xray off`;
 
         const dmsWarning = `// ! DO NOT EDIT !
-        // ! AUTO-GENERATED BY DMS !
-        // ! CHANGES WILL BE OVERWRITTEN !
-        // ! PLACE YOUR CUSTOM CONFIGURATION ELSEWHERE !
+// ! AUTO-GENERATED BY DMS !
+// ! CHANGES WILL BE OVERWRITTEN !
+// ! PLACE YOUR CUSTOM CONFIGURATION ELSEWHERE !
 
-        `;
+`;
+
+        const layoutLines = [];
+        if (manageGaps)
+            layoutLines.push(`    gaps ${gaps}`, "");
+        layoutLines.push("    border {", `        width ${borderSize}`, "    }", "", "    focus-ring {", `        width ${borderSize}`, "    }");
 
         const configContent = dmsWarning + `layout {
-        gaps ${gaps}
+${layoutLines.join("\n")}
+}
 
-        border {
-        width ${borderSize}
-        }
-
-        focus-ring {
-        width ${borderSize}
-        }
-        }
-        window-rule {
-        geometry-corner-radius ${cornerRadius}
-        clip-to-geometry true
-        tiled-state true
-        draw-border-with-background false
-        }`;
+window-rule {
+    geometry-corner-radius ${cornerRadius}
+    clip-to-geometry true
+    tiled-state true
+    draw-border-with-background false
+}` + xrayRules;
 
         const alttabContent = dmsWarning + `recent-windows {
-        highlight {
+    highlight {
         corner-radius ${cornerRadius}
-        }
-        }`;
+    }
+}`;
 
         const configDir = Paths.strip(StandardPaths.writableLocation(StandardPaths.ConfigLocation));
         const niriDmsDir = configDir + "/niri/dms";
@@ -1126,13 +1248,18 @@ Singleton {
 
         writeConfigProcess.configContent = configContent;
         writeConfigProcess.configPath = configPath;
+        writeConfigProcess.requestRevision = _layoutRequestRevision;
         writeConfigProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${configPath}" << 'EOF'\n${configContent}\nEOF`];
+        _awaitingLayoutReloadRevision = Math.max(_awaitingLayoutReloadRevision, _layoutRequestRevision);
         writeConfigProcess.running = true;
 
-        writeAlttabProcess.alttabContent = alttabContent;
-        writeAlttabProcess.alttabPath = alttabPath;
-        writeAlttabProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${alttabPath}" << 'EOF'\n${alttabContent}\nEOF`];
-        writeAlttabProcess.running = true;
+        if (_lastGeneratedAlttabContent !== alttabContent) {
+            _lastGeneratedAlttabContent = alttabContent;
+            writeAlttabProcess.alttabContent = alttabContent;
+            writeAlttabProcess.alttabPath = alttabPath;
+            writeAlttabProcess.command = ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${alttabPath}" << 'EOF'\n${alttabContent}\nEOF`];
+            writeAlttabProcess.running = true;
+        }
 
         for (const name of ["outputs", "binds", "cursor", "windowrules", "colors", "alttab", "layout"]) {
             const path = niriDmsDir + "/" + name + ".kdl";
@@ -1141,8 +1268,6 @@ Singleton {
                     log.warn("Failed to ensure " + name + ".kdl, exit code:", exitCode);
             });
         }
-
-        configGenerationPending = false;
     }
 
     function generateNiriBlurrule() {
@@ -1248,15 +1373,36 @@ Singleton {
 
         const commands = [];
 
+        if (config.disabled !== undefined) {
+            commands.push(`niri msg output "${outputName}" ${config.disabled ? "off" : "on"}`);
+            if (config.disabled) {
+                const fullDisableCommand = "{ " + commands.join(" && ") + "; } 2>&1";
+                Proc.runCommand("niri-output-config-" + outputName, ["sh", "-c", fullDisableCommand], (output, exitCode) => {
+                    if (exitCode !== 0) {
+                        log.warn("Failed to apply output config:", outputName, "exit:", exitCode, output);
+                        if (callback)
+                            callback(false, output);
+                        return;
+                    }
+                    fetchOutputs();
+                    if (callback)
+                        callback(true, "Success");
+                });
+                return;
+            }
+        }
+
         if (config.position !== undefined) {
-            commands.push(`niri msg output "${outputName}" position ${config.position.x} ${config.position.y}`);
+            commands.push(`niri msg output "${outputName}" position set ${config.position.x} ${config.position.y}`);
         }
 
         if (config.mode !== undefined) {
             commands.push(`niri msg output "${outputName}" mode ${config.mode}`);
         }
 
-        if (config.vrr !== undefined) {
+        if (config.vrrOnDemand !== undefined) {
+            commands.push(`niri msg output "${outputName}" vrr --on-demand ${config.vrrOnDemand ? "on" : "off"}`);
+        } else if (config.vrr !== undefined) {
             commands.push(`niri msg output "${outputName}" vrr ${config.vrr ? "on" : "off"}`);
         }
 
@@ -1274,10 +1420,10 @@ Singleton {
             return;
         }
 
-        const fullCommand = commands.join(" && ");
-        Proc.runCommand("niri-output-config", ["sh", "-c", fullCommand], (output, exitCode) => {
+        const fullCommand = "{ " + commands.join(" && ") + "; } 2>&1";
+        Proc.runCommand("niri-output-config-" + outputName, ["sh", "-c", fullCommand], (output, exitCode) => {
             if (exitCode !== 0) {
-                log.warn("Failed to apply output config:", output);
+                log.warn("Failed to apply output config:", outputName, "exit:", exitCode, output);
                 if (callback)
                     callback(false, output);
                 return;
@@ -1290,6 +1436,8 @@ Singleton {
     }
 
     function getOutputIdentifier(output, outputName) {
+        if (output.explicitIdentifier)
+            return outputName;
         if (SettingsData.displayNameMode === "model" && output.make && output.model) {
             const serial = output.serial || "Unknown";
             return output.make + " " + output.model + " " + serial;
@@ -1297,10 +1445,32 @@ Singleton {
         return outputName;
     }
 
-    function generateOutputsConfig(outputsData) {
+    function outputSettingsFor(output, outputName, niriSettings) {
+        const identifier = getOutputIdentifier(output, outputName);
+        if (niriSettings)
+            return niriSettings[identifier] || niriSettings[outputName] || {};
+        return SettingsData.getNiriOutputSettings(identifier);
+    }
+
+    function transformToNiri(transform) {
+        const transformMap = {
+            "Normal": "normal",
+            "90": "90",
+            "180": "180",
+            "270": "270",
+            "Flipped": "flipped",
+            "Flipped90": "flipped-90",
+            "Flipped180": "flipped-180",
+            "Flipped270": "flipped-270"
+        };
+        return transformMap[transform] || "normal";
+    }
+
+    function buildOutputsConfig(outputsData, niriSettings) {
         const data = outputsData || outputs;
         if (!data || Object.keys(data).length === 0)
-            return;
+            return "";
+
         let kdlContent = `// Auto-generated by DMS - do not edit manually\n\n`;
 
         const sortedNames = Object.keys(data).sort((a, b) => {
@@ -1311,17 +1481,17 @@ Singleton {
         for (const outputName of sortedNames) {
             const output = data[outputName];
             const identifier = getOutputIdentifier(output, outputName);
-            const niriSettings = SettingsData.getNiriOutputSettings(identifier);
+            const outputSettings = outputSettingsFor(output, outputName, niriSettings);
 
             kdlContent += `output "${identifier}" {\n`;
 
-            if (niriSettings.disabled) {
+            if (outputSettings.disabled) {
                 kdlContent += `    off\n`;
-                kdlContent += `}\n\n`;
-                continue;
             }
 
-            if (output.current_mode !== undefined && output.modes && output.modes[output.current_mode]) {
+            if (output.configured_mode) {
+                kdlContent += `    mode "${output.configured_mode}"\n`;
+            } else if (output.current_mode !== undefined && output.modes && output.modes[output.current_mode]) {
                 const mode = output.modes[output.current_mode];
                 kdlContent += `    mode "${mode.width}x${mode.height}@${(mode.refresh_rate / 1000).toFixed(3)}"\n`;
             }
@@ -1330,17 +1500,7 @@ Singleton {
                 kdlContent += `    scale ${output.logical.scale || 1.0}\n`;
 
                 if (output.logical.transform && output.logical.transform !== "Normal") {
-                    const transformMap = {
-                        "Normal": "normal",
-                        "90": "90",
-                        "180": "180",
-                        "270": "270",
-                        "Flipped": "flipped",
-                        "Flipped90": "flipped-90",
-                        "Flipped180": "flipped-180",
-                        "Flipped270": "flipped-270"
-                    };
-                    kdlContent += `    transform "${transformMap[output.logical.transform] || "normal"}"\n`;
+                    kdlContent += `    transform "${transformToNiri(output.logical.transform)}"\n`;
                 }
 
                 if (output.logical.x !== undefined && output.logical.y !== undefined) {
@@ -1348,23 +1508,36 @@ Singleton {
                 }
             }
 
-            if (output.vrr_enabled || niriSettings.vrrOnDemand) {
-                const vrrOnDemand = niriSettings.vrrOnDemand ?? false;
+            if (output.vrr_enabled || outputSettings.vrrOnDemand) {
+                const vrrOnDemand = outputSettings.vrrOnDemand ?? false;
                 kdlContent += vrrOnDemand ? `    variable-refresh-rate on-demand=true\n` : `    variable-refresh-rate\n`;
             }
 
-            if (niriSettings.focusAtStartup) {
+            if (outputSettings.focusAtStartup) {
                 kdlContent += `    focus-at-startup\n`;
             }
 
-            if (niriSettings.backdropColor) {
-                kdlContent += `    backdrop-color "${niriSettings.backdropColor}"\n`;
+            if (outputSettings.backdropColor) {
+                kdlContent += `    backdrop-color "${outputSettings.backdropColor}"\n`;
             }
 
-            kdlContent += generateHotCornersBlock(niriSettings);
-            kdlContent += generateLayoutBlock(niriSettings);
+            kdlContent += generateHotCornersBlock(outputSettings);
+            kdlContent += generateLayoutBlock(outputSettings);
 
             kdlContent += `}\n\n`;
+        }
+
+        return kdlContent;
+    }
+
+    function generateOutputsConfig(outputsData, settingsOrCallback, maybeCallback) {
+        const niriSettings = typeof settingsOrCallback === "function" ? null : settingsOrCallback;
+        const callback = typeof settingsOrCallback === "function" ? settingsOrCallback : maybeCallback;
+        const kdlContent = buildOutputsConfig(outputsData, niriSettings);
+        if (!kdlContent) {
+            if (callback)
+                callback(false);
+            return;
         }
 
         const configDir = Paths.strip(StandardPaths.writableLocation(StandardPaths.ConfigLocation));
@@ -1374,9 +1547,13 @@ Singleton {
         Proc.runCommand("niri-write-outputs", ["sh", "-c", `mkdir -p "${niriDmsDir}" && cat > "${outputsPath}" << 'EOF'\n${kdlContent}EOF`], (output, exitCode) => {
             if (exitCode !== 0) {
                 log.warn("Failed to write outputs config:", output);
+                if (callback)
+                    callback(false, output);
                 return;
             }
             log.info("Generated outputs config at", outputsPath);
+            if (callback)
+                callback(true, "");
         });
     }
 

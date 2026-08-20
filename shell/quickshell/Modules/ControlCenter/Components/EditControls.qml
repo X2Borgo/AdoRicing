@@ -50,7 +50,7 @@ Row {
         WlrLayershell.namespace: "dms:control-center-widget-library"
         WlrLayershell.layer: WlrLayershell.Overlay
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: PopoutManager.screenshotActive ? WlrKeyboardFocus.None : (visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None)
 
         anchors {
             top: true
@@ -170,7 +170,7 @@ Row {
 
                             Column {
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
+                                spacing: Theme.spacingXXS
                                 width: parent.width - Theme.iconSize * 2 - Theme.spacingM * 3
 
                                 Typography {
@@ -219,7 +219,7 @@ Row {
         width: (parent.width - Theme.spacingS * 2) / 3
         height: 48
         radius: Theme.cornerRadius
-        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+        color: Theme.primaryHover
         border.color: Theme.primary
         border.width: 0
 
@@ -253,7 +253,7 @@ Row {
         width: (parent.width - Theme.spacingS * 2) / 3
         height: 48
         radius: Theme.cornerRadius
-        color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.12)
+        color: Theme.warningHover
         border.color: Theme.warning
         border.width: 0
 
@@ -287,7 +287,7 @@ Row {
         width: (parent.width - Theme.spacingS * 2) / 3
         height: 48
         radius: Theme.cornerRadius
-        color: Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.12)
+        color: Theme.errorHover
         border.color: Theme.error
         border.width: 0
 

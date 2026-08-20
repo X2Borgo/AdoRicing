@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell.Hyprland
 import qs.Common
 import qs.Modals.Common
 import qs.Services
@@ -10,11 +9,6 @@ DankModal {
     readonly property var log: Log.scoped("BluetoothPairingModal")
 
     layerNamespace: "dms:bluetooth-pairing"
-
-    HyprlandFocusGrab {
-        windows: [root.contentWindow]
-        active: root.useHyprlandFocusGrab && root.shouldHaveFocus
-    }
 
     property string deviceName: ""
     property string deviceAddress: ""
@@ -230,7 +224,7 @@ DankModal {
 
                     Column {
                         anchors.centerIn: parent
-                        spacing: 2
+                        spacing: Theme.spacingXXS
 
                         StyledText {
                             text: I18n.tr("Passkey:")
@@ -262,7 +256,7 @@ DankModal {
                             width: Math.max(70, cancelText.contentWidth + Theme.spacingM * 2)
                             height: 36
                             radius: Theme.cornerRadius
-                            color: cancelArea.containsMouse ? Theme.surfaceTextHover : "transparent"
+                            color: cancelArea.containsMouse ? Theme.surfaceTextHover : Theme.withAlpha(Theme.surfaceTextHover, 0)
                             border.color: Theme.surfaceVariantAlpha
                             border.width: 1
 

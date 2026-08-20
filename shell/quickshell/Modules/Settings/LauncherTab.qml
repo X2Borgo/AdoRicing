@@ -9,6 +9,37 @@ Item {
     id: root
 
     property var parentModal: null
+    readonly property string defaultLauncherAction: "spawn dms ipc call spotlight toggle"
+    readonly property string spotlightBarAction: "spawn dms ipc call spotlight-bar toggle"
+    readonly property int keybindDataVersion: KeybindsService._dataVersion
+    readonly property bool keybindsAvailable: KeybindsService.available
+    readonly property string defaultLauncherKeybindSearch: "spotlight toggle"
+    readonly property string spotlightBarKeybindSearch: "spotlight-bar"
+
+    function openKeybindsSearch(query) {
+        if (!root.parentModal)
+            return;
+        if (typeof root.parentModal.showKeybindsSearch === "function") {
+            root.parentModal.showKeybindsSearch(query);
+        } else {
+            root.parentModal.showWithTabName("keybinds");
+        }
+    }
+
+    function keysLabel(actionId) {
+        void (keybindDataVersion);
+        if (!keybindsAvailable)
+            return I18n.tr("Manual config");
+        const keys = KeybindsService.keysForAction(actionId);
+        if (!keys || keys.length === 0)
+            return I18n.tr("Not bound");
+        return keys.join(", ");
+    }
+
+    Component.onCompleted: {
+        if (KeybindsService.available)
+            KeybindsService.loadBinds(false);
+    }
 
     FileBrowserModal {
         id: logoFileBrowser
@@ -35,20 +66,20 @@ Item {
             SettingsCard {
                 width: parent.width
                 iconName: "search"
-                title: I18n.tr("Launcher Style")
+                title: I18n.tr("Default Launcher")
                 settingKey: "launcherStyle"
 
                 SettingsControlledByFrame {
                     visible: SettingsData.connectedFrameModeActive
                     parentModal: root.parentModal
-                    settingLabel: I18n.tr("Launcher Style")
-                    reason: I18n.tr("Managed by Frame Mode")
+                    settingLabel: I18n.tr("Default Launcher")
+                    reason: I18n.tr("Connected Frame Mode uses the connected launcher for default launcher shortcuts.")
                 }
 
                 StyledText {
                     width: parent.width
                     visible: !SettingsData.connectedFrameModeActive
-                    text: SettingsData.launcherStyle === "spotlight" ? I18n.tr("Minimal Spotlight-style bar: appears instantly at the top of the screen and expands as you type.") : I18n.tr("Full-featured launcher with mode tabs, grid view, and action panel.")
+                    text: SettingsData.launcherStyle === "spotlight" ? I18n.tr("Default launcher shortcuts open the minimal Spotlight Bar. The dedicated Spotlight Bar shortcut below stays independent.") : I18n.tr("Default launcher shortcuts open the full launcher with mode tabs, grid view, and action panel.")
                     font.pixelSize: Theme.fontSizeSmall
                     color: Theme.surfaceVariantText
                     wrapMode: Text.WordWrap
@@ -57,8 +88,8 @@ Item {
                 SettingsButtonGroupRow {
                     visible: !SettingsData.connectedFrameModeActive
                     settingKey: "launcherStyleSelector"
-                    tags: ["launcher", "style", "spotlight", "full", "minimal"]
-                    text: I18n.tr("Style")
+                    tags: ["launcher", "style", "default", "spotlight", "full", "minimal"]
+                    text: I18n.tr("Default Opens")
                     model: [I18n.tr("Full"), I18n.tr("Spotlight")]
                     currentIndex: SettingsData.launcherStyle === "spotlight" ? 1 : 0
                     onSelectionChanged: (index, selected) => {
@@ -66,6 +97,179 @@ Item {
                             return;
                         SettingsData.set("launcherStyle", index === 1 ? "spotlight" : "full");
                     }
+                }
+
+                StyledRect {
+                    id: defaultShortcutCard
+                    width: parent.width
+                    height: defaultShortcutRow.implicitHeight + Theme.spacingM * 2
+                    radius: Theme.cornerRadius
+                    color: defaultShortcutMouse.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, 0.48) : Theme.withAlpha(Theme.surfaceContainer, 0.35)
+                    border.color: Theme.outlineMedium
+                    border.width: 1
+
+                    Row {
+                        id: defaultShortcutRow
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        DankIcon {
+                            name: "keyboard"
+                            size: Theme.iconSize
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Column {
+                            width: Math.max(0, parent.width - Theme.iconSize - defaultShortcutValue.width - Theme.spacingM * 2)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacingXXS
+
+                            StyledText {
+                                text: I18n.tr("Default Launcher Shortcut")
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Medium
+                                color: Theme.surfaceText
+                                width: parent.width
+                                elide: Text.ElideRight
+                            }
+
+                            StyledText {
+                                text: !root.keybindsAvailable ? I18n.tr("Bind the spotlight IPC action in your compositor config.") : SettingsData.connectedFrameModeActive ? I18n.tr("Opens the connected launcher in Connected Frame Mode.") : I18n.tr("Follows the default launcher choice selected above.")
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        StyledText {
+                            id: defaultShortcutValue
+                            text: root.keysLabel(root.defaultLauncherAction)
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.Medium
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignRight
+                            width: Math.min(170, implicitWidth)
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    MouseArea {
+                        id: defaultShortcutMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openKeybindsSearch(root.defaultLauncherKeybindSearch)
+                    }
+                }
+
+                SettingsToggleRow {
+                    settingKey: "launcherUseOverlayLayer"
+                    tags: ["launcher", "fullscreen", "overlay", "layer"]
+                    text: I18n.tr("Use Overlay Layer", "launcher layer toggle: use Wayland overlay layer")
+                    description: I18n.tr("Use the overlay layer when opening the launcher")
+                    checked: SettingsData.launcherUseOverlayLayer
+                    onToggled: checked => SettingsData.set("launcherUseOverlayLayer", checked)
+                }
+            }
+
+            SettingsCard {
+                width: parent.width
+                iconName: "search"
+                title: I18n.tr("Spotlight Bar")
+                settingKey: "spotlightBarLauncher"
+
+                StyledText {
+                    width: parent.width
+                    text: I18n.tr("A separate minimal launcher action that works in Standalone, Separate Frame Mode, and Connected Frame Mode.")
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.WordWrap
+                }
+
+                StyledRect {
+                    id: spotlightShortcutCard
+                    width: parent.width
+                    height: spotlightShortcutRow.implicitHeight + Theme.spacingM * 2
+                    radius: Theme.cornerRadius
+                    color: spotlightShortcutMouse.containsMouse ? Theme.withAlpha(Theme.surfaceContainerHigh, 0.48) : Theme.withAlpha(Theme.surfaceContainer, 0.35)
+                    border.color: Theme.outlineMedium
+                    border.width: 1
+
+                    Row {
+                        id: spotlightShortcutRow
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingM
+
+                        DankIcon {
+                            name: "keyboard"
+                            size: Theme.iconSize
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Column {
+                            width: Math.max(0, parent.width - Theme.iconSize - spotlightShortcutValue.width - Theme.spacingM * 2)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.spacingXXS
+
+                            StyledText {
+                                text: I18n.tr("Spotlight Bar Shortcut")
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Medium
+                                color: Theme.surfaceText
+                                width: parent.width
+                                elide: Text.ElideRight
+                            }
+
+                            StyledText {
+                                text: !root.keybindsAvailable ? I18n.tr("Bind the spotlight-bar IPC action in your compositor config.") : I18n.tr("Uses the spotlight-bar IPC action and always opens the minimal bar.")
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        StyledText {
+                            id: spotlightShortcutValue
+                            text: root.keysLabel(root.spotlightBarAction)
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.Medium
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                            horizontalAlignment: Text.AlignRight
+                            width: Math.min(170, implicitWidth)
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    MouseArea {
+                        id: spotlightShortcutMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openKeybindsSearch(root.spotlightBarKeybindSearch)
+                    }
+                }
+
+                SettingsToggleRow {
+                    settingKey: "spotlightBarShowModeChips"
+                    tags: ["launcher", "spotlight", "bar", "chips", "tabs", "modes"]
+                    text: I18n.tr("Show Mode Chips")
+                    description: I18n.tr("Show All, Apps, Files, and Plugins chips beside the Spotlight Bar input.")
+                    checked: SettingsData.spotlightBarShowModeChips
+                    onToggled: checked => SettingsData.set("spotlightBarShowModeChips", checked)
                 }
             }
 
@@ -91,6 +295,7 @@ Item {
                     DankButtonGroup {
                         id: logoModeGroup
                         anchors.horizontalCenter: parent.horizontalCenter
+                        maximumWidth: parent.width
                         buttonPadding: parent.width < 480 ? Theme.spacingS : Theme.spacingL
                         minButtonWidth: parent.width < 480 ? 44 : 64
                         textSize: parent.width < 480 ? Theme.fontSizeSmall : Theme.fontSizeMedium
@@ -100,7 +305,7 @@ Item {
                                 modes.push("niri");
                             } else if (CompositorService.isHyprland) {
                                 modes.push("Hyprland");
-                            } else if (CompositorService.isDwl) {
+                            } else if (CompositorService.isMango) {
                                 modes.push("mango");
                             } else if (CompositorService.isSway) {
                                 modes.push("Sway");
@@ -160,7 +365,7 @@ Item {
                         width: parent.width - selectButton.width - Theme.spacingM
                         height: 36
                         radius: Theme.cornerRadius
-                        color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.9)
+                        color: Theme.withAlpha(Theme.surfaceContainer, 0.9)
                         border.color: Theme.outlineStrong
                         border.width: 1
 
@@ -172,7 +377,9 @@ Item {
                             font.pixelSize: Theme.fontSizeMedium
                             color: SettingsData.launcherLogoCustomPath ? Theme.surfaceText : Theme.outlineButton
                             width: parent.width - Theme.spacingM * 2
+                            wrapMode: Text.NoWrap
                             elide: Text.ElideMiddle
+                            horizontalAlignment: Text.AlignLeft
                         }
                     }
 
@@ -214,6 +421,7 @@ Item {
 
                                 DankButtonGroup {
                                     id: colorModeGroup
+                                    maximumWidth: parent.parent.width - (colorPickerCircle.visible ? colorPickerCircle.width + Theme.spacingM : 0)
                                     buttonPadding: parent.parent.width < 480 ? Theme.spacingS : Theme.spacingL
                                     minButtonWidth: parent.parent.width < 480 ? 44 : 64
                                     textSize: parent.parent.width < 480 ? Theme.fontSizeSmall : Theme.fontSizeMedium
@@ -422,6 +630,7 @@ Item {
                         DankButtonGroup {
                             id: sizeGroup
                             anchors.horizontalCenter: parent.horizontalCenter
+                            maximumWidth: parent.width
                             buttonPadding: parent.width < 400 ? Theme.spacingS : Theme.spacingL
                             minButtonWidth: parent.width < 400 ? 60 : 80
                             textSize: parent.width < 400 ? Theme.fontSizeSmall : Theme.fontSizeMedium
@@ -465,6 +674,15 @@ Item {
                     description: I18n.tr("Free VRAM/memory when the launcher is closed. May cause a slight delay when reopening.")
                     checked: SettingsData.dankLauncherV2UnloadOnClose
                     onToggled: checked => SettingsData.set("dankLauncherV2UnloadOnClose", checked)
+                }
+
+                SettingsToggleRow {
+                    settingKey: "dankLauncherV2ShowSourceBadges"
+                    tags: ["launcher", "appearance", "badge", "source", "flatpak"]
+                    text: I18n.tr("Show Package Source Badges")
+                    description: I18n.tr("Show Flatpak, Snap, AppImage, or Nix badge icons on launcher items.")
+                    checked: SettingsData.dankLauncherV2ShowSourceBadges
+                    onToggled: checked => SettingsData.set("dankLauncherV2ShowSourceBadges", checked)
                 }
 
                 SettingsToggleRow {
@@ -512,6 +730,7 @@ Item {
                             DankButtonGroup {
                                 id: borderColorGroup
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                maximumWidth: parent.width
                                 buttonPadding: parent.width < 400 ? Theme.spacingS : Theme.spacingL
                                 minButtonWidth: parent.width < 400 ? 50 : 70
                                 textSize: parent.width < 400 ? Theme.fontSizeSmall : Theme.fontSizeMedium
@@ -525,6 +744,31 @@ Item {
                             }
                         }
                     }
+                }
+            }
+
+            SettingsCard {
+                width: parent.width
+                iconName: "layers"
+                title: I18n.tr("Modal Background")
+                settingKey: "modalBackground"
+                tags: ["modal", "darken", "background", "overlay", "launcher"]
+
+                SettingsControlledByFrame {
+                    visible: SettingsData.frameEnabled
+                    parentModal: root.parentModal
+                    settingLabel: I18n.tr("Darken Modal Background")
+                    reason: I18n.tr("Disabled by Frame Mode")
+                }
+
+                SettingsToggleRow {
+                    settingKey: "modalDarkenBackground"
+                    tags: ["modal", "darken", "background", "overlay", "launcher"]
+                    text: I18n.tr("Darken Modal Background")
+                    description: I18n.tr("Show darkened overlay behind modal dialogs")
+                    visible: !SettingsData.frameEnabled
+                    checked: SettingsData.modalDarkenBackground
+                    onToggled: checked => SettingsData.set("modalDarkenBackground", checked)
                 }
             }
 
@@ -551,6 +795,20 @@ Item {
                     checked: SettingsData.niriOverviewOverlayEnabled
                     onToggled: checked => SettingsData.set("niriOverviewOverlayEnabled", checked)
                 }
+
+                SettingsButtonGroupRow {
+                    visible: SettingsData.niriOverviewOverlayEnabled
+                    settingKey: "niriOverviewLauncherStyle"
+                    tags: ["launcher", "niri", "overview", "overlay", "style", "spotlight", "full"]
+                    text: I18n.tr("Default Opens")
+                    model: [I18n.tr("Full"), I18n.tr("Spotlight")]
+                    currentIndex: SettingsData.niriOverviewLauncherStyle === "spotlight" ? 1 : 0
+                    onSelectionChanged: (index, selected) => {
+                        if (!selected)
+                            return;
+                        SettingsData.set("niriOverviewLauncherStyle", index === 1 ? "spotlight" : "full");
+                    }
+                }
             }
 
             SettingsCard {
@@ -565,7 +823,7 @@ Item {
                     spacing: Theme.spacingS
 
                     Repeater {
-                        model: ["dms_settings", "dms_notepad", "dms_sysmon", "dms_settings_search", "dms_clipboard_search"]
+                        model: ["dms_settings", "dms_notepad", "dms_sysmon", "dms_settings_search", "dms_clipboard_search", "dms_colorpicker"]
 
                         delegate: Rectangle {
                             id: pluginDelegate
@@ -576,7 +834,7 @@ Item {
                             width: parent.width
                             height: 56
                             radius: Theme.cornerRadius
-                            color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.3)
+                            color: Theme.withAlpha(Theme.surfaceContainer, 0.3)
 
                             Row {
                                 anchors.left: parent.left
@@ -593,7 +851,7 @@ Item {
 
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
 
                                     StyledText {
                                         text: pluginDelegate.plugin?.name ?? pluginDelegate.modelData
@@ -744,7 +1002,7 @@ Item {
                                 width: parent.width
                                 height: 52
                                 radius: Theme.cornerRadius
-                                color: visibilityDelegateItem.held ? Theme.surfaceHover : Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.3)
+                                color: visibilityDelegateItem.held ? Theme.surfaceHover : Theme.withAlpha(Theme.surfaceContainer, 0.3)
 
                                 Row {
                                     anchors.left: parent.left
@@ -776,7 +1034,7 @@ Item {
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
+                                        spacing: Theme.spacingXXS
 
                                         Row {
                                             spacing: Theme.spacingS
@@ -918,6 +1176,15 @@ Item {
                 }
 
                 SettingsToggleRow {
+                    settingKey: "rememberLastMode"
+                    tags: ["launcher", "remember", "last", "mode", "tab"]
+                    text: I18n.tr("Remember Last Mode")
+                    description: I18n.tr("Restore the last selected mode (tab) when the launcher is opened")
+                    checked: SettingsData.rememberLastMode
+                    onToggled: checked => SettingsData.set("rememberLastMode", checked)
+                }
+
+                SettingsToggleRow {
                     settingKey: "rememberLastQuery"
                     tags: ["launcher", "remember", "last", "search", "query"]
                     text: I18n.tr("Remember Last Query")
@@ -997,7 +1264,7 @@ Item {
                             width: hiddenAppsList.width
                             height: 48
                             radius: Theme.cornerRadius
-                            color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.3)
+                            color: Theme.withAlpha(Theme.surfaceContainer, 0.3)
                             border.width: 0
 
                             Row {
@@ -1022,7 +1289,7 @@ Item {
 
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
 
                                     StyledText {
                                         text: modelData.name
@@ -1108,7 +1375,7 @@ Item {
                             width: overridesList.width
                             height: 48
                             radius: Theme.cornerRadius
-                            color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.3)
+                            color: Theme.withAlpha(Theme.surfaceContainer, 0.3)
                             border.width: 0
 
                             Row {
@@ -1133,7 +1400,7 @@ Item {
 
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
 
                                     StyledText {
                                         text: modelData.name
@@ -1245,7 +1512,7 @@ Item {
                             width: rankedAppsList.width
                             height: 48
                             radius: Theme.cornerRadius
-                            color: Qt.rgba(Theme.surfaceContainer.r, Theme.surfaceContainer.g, Theme.surfaceContainer.b, 0.3)
+                            color: Theme.withAlpha(Theme.surfaceContainer, 0.3)
                             border.width: 0
 
                             Row {
@@ -1279,7 +1546,7 @@ Item {
 
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
 
                                     StyledText {
                                         text: modelData.name || I18n.tr("Unknown App")

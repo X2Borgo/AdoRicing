@@ -8,7 +8,6 @@ import qs.Widgets
 FloatingWindow {
     id: settingsModal
 
-    property bool disablePopupTransparency: true
     property var profileBrowser: profileBrowserLoader.item
     property var wallpaperBrowser: wallpaperBrowserLoader.item
 
@@ -37,10 +36,14 @@ FloatingWindow {
     property bool isCompactMode: width < 700
     property bool menuVisible: !isCompactMode
     property bool enableAnimations: true
+    property string keybindSearchQuery: ""
 
     signal closingModal
 
     function show() {
+        if (visible && !backingWindowVisible) {
+            visible = false;
+        }
         visible = true;
     }
 
@@ -49,28 +52,37 @@ FloatingWindow {
     }
 
     function toggle() {
-        visible = !visible;
+        if (visible && backingWindowVisible) {
+            hide();
+            return;
+        }
+        show();
+    }
+
+    function setTabIndex(tabIndex: int) {
+        if (tabIndex < 0)
+            return;
+        currentTabIndex = tabIndex;
+        sidebar.autoExpandForTab(tabIndex);
     }
 
     function showWithTab(tabIndex: int) {
-        if (tabIndex >= 0) {
-            currentTabIndex = tabIndex;
-            sidebar.autoExpandForTab(tabIndex);
-        }
-        visible = true;
+        setTabIndex(tabIndex);
+        show();
     }
 
     function showWithTabName(tabName: string) {
-        var idx = sidebar.resolveTabIndex(tabName);
-        if (idx >= 0) {
-            currentTabIndex = idx;
-            sidebar.autoExpandForTab(idx);
-        }
-        visible = true;
+        setTabIndex(sidebar.resolveTabIndex(tabName));
+        show();
     }
 
     function resolveTabIndex(tabName: string): int {
         return sidebar.resolveTabIndex(tabName);
+    }
+
+    function showKeybindsSearch(query: string) {
+        keybindSearchQuery = query || "";
+        showWithTabName("keybinds");
     }
 
     function toggleMenu() {
@@ -85,6 +97,8 @@ FloatingWindow {
     implicitHeight: screen ? Math.min(940, screen.height - 100) : 940
     color: Theme.surfaceContainer
     visible: false
+
+    onClosed: hide()
 
     onIsCompactModeChanged: {
         enableAnimations = false;
@@ -165,6 +179,8 @@ FloatingWindow {
 
     FocusScope {
         id: contentFocusScope
+
+        property bool disablePopupTransparency: true
 
         LayoutMirroring.enabled: I18n.isRtl
         LayoutMirroring.childrenInherit: true

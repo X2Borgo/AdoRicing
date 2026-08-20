@@ -11,6 +11,7 @@ Item {
     readonly property var log: Log.scoped("DankLauncherV2ModalSpotlight")
 
     property var modalHandle: root
+    property bool triggerUsesOverlayLayer: false
 
     visible: false
 
@@ -25,17 +26,29 @@ Item {
     property string _pendingMode: ""
 
     readonly property bool useHyprlandFocusGrab: CompositorService.useHyprlandFocusGrab
+
+    TransientSurfaceTracker {
+        id: transientSurfaces
+    }
     readonly property var effectiveScreen: launcherWindow.screen
     readonly property real screenWidth: effectiveScreen?.width ?? 1920
     readonly property real screenHeight: effectiveScreen?.height ?? 1080
     readonly property real dpr: effectiveScreen ? CompositorService.getScreenScale(effectiveScreen) : 1
+    readonly property bool useBackgroundDarken: !FrameTransitionState.effectiveFrameEnabled && SettingsData.modalDarkenBackground
+    readonly property bool usesOverlayLayer: useBackgroundDarken || SettingsData.launcherUseOverlayLayer || triggerUsesOverlayLayer
+    readonly property var effectiveLauncherLayer: LayerShell.fromEnv("DMS_MODAL_LAYER", root.usesOverlayLayer ? WlrLayer.Overlay : WlrLayer.Top, {
+        "allow": ["top", "overlay"],
+        "invalidLayer": WlrLayer.Top,
+        "label": "modals",
+        "error": true
+    })
 
-    readonly property int _openDuration: 80
-    readonly property int _closeDuration: 70
-    readonly property int _motionDuration: 90
+    readonly property int _openDuration: 50
+    readonly property int _closeDuration: 40
+    readonly property int _motionDuration: 60
 
     // Connected frame mode clamps the centered surface inside frame insets.
-    readonly property bool frameConnected: SettingsData.connectedFrameModeActive && !!effectiveScreen && SettingsData.isScreenInPreferences(effectiveScreen, SettingsData.frameScreenPreferences)
+    readonly property bool frameConnected: CompositorService.usesConnectedFrameChromeForScreen(effectiveScreen)
 
     function _frameEdgeInset(side) {
         if (!effectiveScreen || !frameConnected)
@@ -58,7 +71,7 @@ Item {
         const searchBarH = 56;
         const usableH = Math.max(searchBarH, screenHeight - insetT - insetB);
         const preferred = insetT + Math.max(0, usableH * 0.33 - searchBarH / 2);
-        const maxY = Math.max(insetT, screenHeight - insetB - _contentImplicitH);
+        const maxY = Math.max(insetT, screenHeight - insetB - 56);
         return Math.max(insetT, Math.min(preferred, maxY));
     }
 
@@ -75,14 +88,14 @@ Item {
     readonly property real alignedX: Theme.snap(modalX, dpr)
     readonly property real alignedY: Theme.snap(modalY, dpr)
 
-    // Extra headroom above the window for the slide-in animation
+    // Extra headroom above the content for the slide-in animation
     readonly property real _animHeadroom: 16
     readonly property real windowX: Math.max(0, Theme.snap(alignedX - shadowPad, dpr))
     readonly property real windowY: Math.max(0, Theme.snap(alignedY - shadowPad - _animHeadroom, dpr))
     readonly property real contentX: Theme.snap(alignedX - windowX, dpr)
     readonly property real contentY: Theme.snap(alignedY - windowY, dpr)
-    readonly property real windowWidth: alignedWidth + contentX + shadowPad
     readonly property real _animatedContentH: Theme.snap(_contentImplicitH, dpr)
+    readonly property real windowWidth: alignedWidth + contentX + shadowPad
     readonly property real windowHeight: _animatedContentH + contentY + shadowPad + _animHeadroom
 
     readonly property color backgroundColor: Theme.withAlpha(Theme.surfaceContainer, Theme.popupTransparency)
@@ -105,6 +118,7 @@ Item {
         }
     }
     readonly property int borderWidth: SettingsData.dankLauncherV2BorderEnabled ? SettingsData.dankLauncherV2BorderThickness : 0
+    readonly property bool useSingleWindow: CompositorService.isHyprland || useBackgroundDarken
 
     signal dialogClosed
 
@@ -125,15 +139,17 @@ Item {
         if (!spotlightContent)
             return;
         contentVisible = true;
+        spotlightContent.closeTransientUi?.();
 
         const targetQuery = query || (SettingsData.rememberLastQuery ? (SessionData.launcherLastQuery || "") : "");
-        const targetMode = mode || SessionData.launcherLastMode || "all";
+        const targetMode = mode || SessionData.getLauncherRestoreMode();
 
         if (spotlightContent.searchField) {
             spotlightContent.searchField.text = targetQuery;
         }
         if (spotlightContent.controller) {
             spotlightContent.controller.reset();
+            spotlightContent.controller.explicitQuerySession = !!query;
             spotlightContent.controller.searchMode = targetMode;
             spotlightContent.controller.historyIndex = -1;
             if (targetQuery.length > 0)
@@ -144,7 +160,10 @@ Item {
         }
         if (spotlightContent.searchField) {
             spotlightContent.searchField.forceActiveFocus();
-            spotlightContent.searchField.cursorPosition = spotlightContent.searchField.text.length;
+            if (query)
+                spotlightContent.searchField.cursorPosition = targetQuery.length;
+            else
+                spotlightContent.searchField.selectAll();
         }
     }
 
@@ -154,8 +173,6 @@ Item {
         openedFromOverview = false;
         keyboardActive = true;
         ModalManager.openModal(modalHandle);
-        if (useHyprlandFocusGrab)
-            focusGrab.active = true;
         _ensureContentLoadedAndInitialize(query || "", mode || "");
     }
 
@@ -185,12 +202,12 @@ Item {
     function hide() {
         if (!spotlightOpen)
             return;
+        spotlightContent?.closeTransientUi?.();
         openedFromOverview = false;
         isClosing = true;
         contentVisible = false;
         keyboardActive = false;
         spotlightOpen = false;
-        focusGrab.active = false;
         ModalManager.closeModal(modalHandle);
         closeCleanupTimer.start();
     }
@@ -219,8 +236,8 @@ Item {
 
     HyprlandFocusGrab {
         id: focusGrab
-        windows: [launcherWindow]
-        active: false
+        windows: [launcherWindow].concat(transientSurfaces.focusWindows)
+        active: root.useHyprlandFocusGrab && root.keyboardActive
         onCleared: {
             if (spotlightOpen)
                 hide();
@@ -259,11 +276,12 @@ Item {
     PanelWindow {
         id: clickCatcher
         screen: launcherWindow.screen
-        visible: spotlightOpen || isClosing
+        visible: (spotlightOpen || isClosing) && !root.useSingleWindow
         color: "transparent"
+        updatesEnabled: false
 
         WlrLayershell.namespace: "dms:spotlight:clickcatcher"
-        WlrLayershell.layer: WlrLayershell.Top
+        WlrLayershell.layer: root.effectiveLauncherLayer
         WlrLayershell.exclusiveZone: -1
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
@@ -314,6 +332,7 @@ Item {
         exclusionMode: ExclusionMode.Ignore
 
         WindowBlur {
+            id: launcherBlur
             targetWindow: launcherWindow
             readonly property real op: Math.max(0, Math.min(1, (modalContainer.opacity - 0.06) * 2))
             blurX: modalContainer.x
@@ -324,31 +343,26 @@ Item {
         }
 
         WlrLayershell.namespace: "dms:spotlight"
-        WlrLayershell.layer: {
-            switch (Quickshell.env("DMS_MODAL_LAYER")) {
-            case "overlay":
-                return WlrLayershell.Overlay;
-            default:
-                return WlrLayershell.Top;
-            }
-        }
+        WlrLayershell.layer: root.effectiveLauncherLayer
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: keyboardActive ? (root.useHyprlandFocusGrab ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive) : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(keyboardActive, null)
 
+        // Anchored top+bottom: dynamic layer-surface resizes misbehave on some compositors
         anchors {
             top: true
             left: true
+            right: root.useSingleWindow
+            bottom: true
         }
 
         WlrLayershell.margins {
-            left: root.windowX
-            top: root.windowY
+            left: root.useSingleWindow ? 0 : root.windowX
+            top: root.useSingleWindow ? 0 : root.windowY
             right: 0
             bottom: 0
         }
 
-        implicitWidth: root.windowWidth
-        implicitHeight: root.windowHeight
+        implicitWidth: root.useSingleWindow ? 0 : root.windowWidth
 
         mask: Region {
             item: inputMask
@@ -358,19 +372,54 @@ Item {
             id: inputMask
             visible: false
             color: "transparent"
-            x: modalContainer.x
-            y: modalContainer.y + modalContainer.slideOffset
-            width: root.alignedWidth
-            height: root._contentImplicitH
+            x: root.useSingleWindow ? 0 : modalContainer.x
+            y: root.useSingleWindow ? 0 : modalContainer.y + modalContainer.slideOffset
+            width: root.useSingleWindow ? launcherWindow.width : root.alignedWidth
+            height: root.useSingleWindow ? launcherWindow.height : root._contentImplicitH
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: root.useSingleWindow && spotlightOpen
+            z: -2
+            onClicked: root.hide()
+        }
+
+        Rectangle {
+            id: backgroundDarken
+            anchors.fill: parent
+            color: "black"
+            opacity: contentVisible && root.useBackgroundDarken ? 0.5 : 0
+            visible: (spotlightOpen || isClosing) && (root.useBackgroundDarken || opacity > 0)
+            z: -3
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: contentVisible ? root._openDuration : root._closeDuration
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: contentVisible ? [0.0, 0.0, 0.2, 1.0, 1.0, 1.0] : [0.4, 0.0, 1.0, 1.0, 1.0, 1.0]
+                }
+            }
         }
 
         Item {
             id: modalContainer
-            x: root.contentX
-            y: root.contentY
+            x: root.useSingleWindow ? root.alignedX : root.contentX
+            y: root.useSingleWindow ? root.alignedY : root.contentY
             width: root.alignedWidth
             height: root._animatedContentH
             visible: _renderActive
+            z: 0
+
+            MouseArea {
+                anchors.fill: parent
+                enabled: spotlightOpen
+                hoverEnabled: false
+                acceptedButtons: Qt.AllButtons
+                onPressed: mouse => mouse.accepted = true
+                onClicked: mouse => mouse.accepted = true
+                z: -1
+            }
 
             property bool _renderActive: contentVisible
             property real slideOffset: contentVisible ? 0 : -root._animHeadroom
@@ -440,6 +489,7 @@ Item {
                         sourceComponent: SpotlightLauncherContent {
                             focus: true
                             parentModal: root
+                            transientSurfaceTracker: transientSurfaces
                         }
 
                         onLoaded: {
@@ -450,8 +500,12 @@ Item {
                         }
                     }
 
+                    Keys.onPressed: event => root.spotlightContent?.activeContextMenu?.handleKey(event)
+
                     Keys.onEscapePressed: event => {
-                        root.hide();
+                        root.spotlightContent?.activeContextMenu?.handleKey(event);
+                        if (!event.accepted)
+                            root.hide();
                         event.accepted = true;
                     }
                 }

@@ -4,7 +4,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 import Quickshell.I3
 import qs.Common
 import qs.Services
@@ -15,6 +14,8 @@ Singleton {
 
     property bool hasUwsm: false
     property bool isElogind: false
+    property bool loginctlCommandAvailable: false
+    property bool systemctlCommandAvailable: false
     property bool hibernateSupported: false
     property bool inhibitorAvailable: true
     property bool idleInhibited: false
@@ -22,7 +23,6 @@ Singleton {
     property string nvidiaCommand: ""
 
     property bool loginctlAvailable: false
-    property bool wtypeAvailable: false
     property string sessionId: ""
     property string sessionPath: ""
     property bool locked: false
@@ -53,10 +53,12 @@ Singleton {
         running: true
         repeat: false
         onTriggered: {
+            detectUwsmProcess.running = true;
             detectElogindProcess.running = true;
+            detectLoginctlProcess.running = true;
+            detectSystemctlProcess.running = true;
             detectHibernateProcess.running = true;
             detectPrimeRunProcess.running = true;
-            detectWtypeProcess.running = true;
             if (!SettingsData.loginctlLockIntegration) {
                 log.debug("loginctl lock integration disabled by user");
                 return;
@@ -72,7 +74,7 @@ Singleton {
     Process {
         id: detectUwsmProcess
         running: false
-        command: ["which", "uwsm"]
+        command: ["sh", "-c", "command -v uwsm > /dev/null 2>&1 && systemctl --user is-active --quiet 'wayland-wm@*.service' 2> /dev/null"]
 
         onExited: function (exitCode) {
             hasUwsm = (exitCode === 0);
@@ -87,6 +89,26 @@ Singleton {
         onExited: function (exitCode) {
             log.debug("Elogind detection exited with code", exitCode);
             isElogind = (exitCode === 0);
+        }
+    }
+
+    Process {
+        id: detectLoginctlProcess
+        running: false
+        command: ["sh", "-c", "command -v loginctl"]
+
+        onExited: function (exitCode) {
+            loginctlCommandAvailable = (exitCode === 0);
+        }
+    }
+
+    Process {
+        id: detectSystemctlProcess
+        running: false
+        command: ["sh", "-c", "command -v systemctl"]
+
+        onExited: function (exitCode) {
+            systemctlCommandAvailable = (exitCode === 0);
         }
     }
 
@@ -122,18 +144,9 @@ Singleton {
     }
 
     Process {
-        id: detectWtypeProcess
-        running: false
-        command: ["which", "wtype"]
-        onExited: exitCode => {
-            wtypeAvailable = (exitCode === 0);
-        }
-    }
-
-    Process {
         id: detectPrimeRunProcess
         running: false
-        command: ["which", "prime-run"]
+        command: ["sh", "-c", "command -v prime-run"]
 
         onExited: function (exitCode) {
             if (exitCode === 0) {
@@ -147,7 +160,7 @@ Singleton {
     Process {
         id: detectNvidiaOffloadProcess
         running: false
-        command: ["which", "nvidia-offload"]
+        command: ["sh", "-c", "command -v nvidia-offload"]
 
         onExited: function (exitCode) {
             if (exitCode === 0) {
@@ -205,6 +218,8 @@ Singleton {
     }
 
     function launchDesktopEntry(desktopEntry, useNvidia) {
+        if (!desktopEntry || !desktopEntry.command)
+            return;
         let cmd = desktopEntry.command;
 
         const appId = desktopEntry.id || desktopEntry.execString || desktopEntry.exec || "";
@@ -261,6 +276,8 @@ Singleton {
     }
 
     function launchDesktopAction(desktopEntry, action, useNvidia) {
+        if (!desktopEntry || !action || !action.command)
+            return;
         let cmd = action.command;
 
         const appId = desktopEntry.id || desktopEntry.execString || desktopEntry.exec || "";
@@ -310,8 +327,8 @@ Singleton {
                 return;
             }
 
-            if (CompositorService.isDwl) {
-                DwlService.quit();
+            if (CompositorService.isMango) {
+                MangoService.quit();
                 return;
             }
 
@@ -333,9 +350,14 @@ Singleton {
         }
     }
 
+    function powerManagerCommand(action) {
+        const useLoginctl = isElogind || (loginctlCommandAvailable && !systemctlCommandAvailable);
+        return [useLoginctl ? "loginctl" : "systemctl", action];
+    }
+
     function suspend() {
         if (SettingsData.customPowerActionSuspend.length === 0) {
-            Quickshell.execDetached([isElogind ? "loginctl" : "systemctl", "suspend"]);
+            Quickshell.execDetached(powerManagerCommand("suspend"));
         } else {
             Quickshell.execDetached(["sh", "-c", SettingsData.customPowerActionSuspend]);
         }
@@ -346,13 +368,13 @@ Singleton {
         if (SettingsData.customPowerActionHibernate.length > 0) {
             hibernateProcess.command = ["sh", "-c", SettingsData.customPowerActionHibernate];
         } else {
-            hibernateProcess.command = [isElogind ? "loginctl" : "systemctl", "hibernate"];
+            hibernateProcess.command = powerManagerCommand("hibernate");
         }
         hibernateProcess.running = true;
     }
 
     function suspendThenHibernate() {
-        Quickshell.execDetached([isElogind ? "loginctl" : "systemctl", "suspend-then-hibernate"]);
+        Quickshell.execDetached(powerManagerCommand("suspend-then-hibernate"));
     }
 
     function suspendWithBehavior(behavior) {
@@ -367,7 +389,7 @@ Singleton {
 
     function reboot() {
         if (SettingsData.customPowerActionReboot.length === 0) {
-            Quickshell.execDetached([isElogind ? "loginctl" : "systemctl", "reboot"]);
+            Quickshell.execDetached(powerManagerCommand("reboot"));
         } else {
             Quickshell.execDetached(["sh", "-c", SettingsData.customPowerActionReboot]);
         }
@@ -375,7 +397,7 @@ Singleton {
 
     function poweroff() {
         if (SettingsData.customPowerActionPowerOff.length === 0) {
-            Quickshell.execDetached([isElogind ? "loginctl" : "systemctl", "poweroff"]);
+            Quickshell.execDetached(powerManagerCommand("poweroff"));
         } else {
             Quickshell.execDetached(["sh", "-c", SettingsData.customPowerActionPowerOff]);
         }

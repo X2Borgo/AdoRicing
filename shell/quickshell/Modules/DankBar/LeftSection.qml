@@ -14,10 +14,12 @@ Item {
     property real barSpacing: 4
     property var barConfig: null
     property var blurBarWindow: null
+    property real sectionAvailablePrimarySize: 0
     property bool overrideAxisLayout: false
     property bool forceVerticalLayout: false
 
     readonly property bool isVertical: overrideAxisLayout ? forceVerticalLayout : (axis?.isVertical ?? false)
+    property alias widgetLayoutLoader: layoutLoader
 
     implicitHeight: layoutLoader.item ? layoutLoader.item.implicitHeight : 0
     implicitWidth: layoutLoader.item ? layoutLoader.item.implicitWidth : 0
@@ -43,6 +45,7 @@ Item {
                 Item {
                     readonly property real rowSpacing: parent.widgetSpacing
                     property var itemData: modelData
+                    visible: widgetLoader.active && widgetLoader.widgetEnabled
                     width: widgetLoader.item ? widgetLoader.item.width : 0
                     height: widgetLoader.item ? widgetLoader.item.height : 0
                     WidgetHost {
@@ -61,6 +64,7 @@ Item {
                         barSpacing: root.barSpacing
                         barConfig: root.barConfig
                         blurBarWindow: root.blurBarWindow
+                        sectionAvailablePrimarySize: root.sectionAvailablePrimarySize
                         isFirst: index === 0
                         isLast: index === rowRepeater.count - 1
                         sectionSpacing: parent.rowSpacing
@@ -89,6 +93,7 @@ Item {
                     width: parent.width
                     readonly property real columnSpacing: parent.widgetSpacing
                     property var itemData: modelData
+                    visible: widgetLoader.active && widgetLoader.widgetEnabled
                     height: widgetLoader.item ? widgetLoader.item.height : 0
                     WidgetHost {
                         id: widgetLoader
@@ -106,6 +111,7 @@ Item {
                         barSpacing: root.barSpacing
                         barConfig: root.barConfig
                         blurBarWindow: root.blurBarWindow
+                        sectionAvailablePrimarySize: root.sectionAvailablePrimarySize
                         isFirst: index === 0
                         isLast: index === columnRepeater.count - 1
                         sectionSpacing: parent.columnSpacing

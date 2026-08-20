@@ -12,13 +12,13 @@ StyledRect {
     height: warningContent.implicitHeight + Theme.spacingL * 2
     radius: Theme.cornerRadius
 
-    readonly property bool showError: DisplayConfigState.includeStatus.exists && !DisplayConfigState.includeStatus.included
-    readonly property bool showSetup: !DisplayConfigState.includeStatus.exists && !DisplayConfigState.includeStatus.included
+    readonly property bool showLegacy: DisplayConfigState.readOnly
+    readonly property bool showSetup: !showLegacy && !DisplayConfigState.includeStatus.included
 
-    color: (showError || showSetup) ? Theme.withAlpha(Theme.primary, 0.15) : "transparent"
-    border.color: (showError || showSetup) ? Theme.withAlpha(Theme.primary, 0.3) : "transparent"
+    color: (showLegacy || showSetup) ? Theme.withAlpha(Theme.primary, 0.15) : Theme.withAlpha(Theme.primary, 0)
+    border.color: (showLegacy || showSetup) ? Theme.withAlpha(Theme.primary, 0.3) : Theme.withAlpha(Theme.primary, 0)
     border.width: 1
-    visible: (showError || showSetup) && DisplayConfigState.hasOutputBackend && !DisplayConfigState.checkingInclude
+    visible: (showLegacy || showSetup) && DisplayConfigState.hasOutputBackend && !DisplayConfigState.checkingInclude
 
     Column {
         id: warningContent
@@ -44,10 +44,10 @@ StyledRect {
 
                 StyledText {
                     text: {
+                        if (root.showLegacy)
+                            return I18n.tr("Hyprland conf mode");
                         if (root.showSetup)
                             return I18n.tr("First Time Setup");
-                        if (root.showError)
-                            return I18n.tr("Outputs Include Missing");
                         return "";
                     }
                     font.pixelSize: Theme.fontSizeMedium
@@ -59,10 +59,10 @@ StyledRect {
 
                 StyledText {
                     text: {
+                        if (root.showLegacy)
+                            return I18n.tr("This install is still using hyprland.conf. Run dms setup to migrate before editing display settings.");
                         if (root.showSetup)
                             return I18n.tr("Click 'Setup' to create the outputs config and add include to your compositor config.");
-                        if (root.showError)
-                            return I18n.tr("dms/outputs config exists but is not included in your compositor config. Display changes won't persist.");
                         return "";
                     }
                     font.pixelSize: Theme.fontSizeSmall
@@ -75,14 +75,8 @@ StyledRect {
 
             DankButton {
                 id: fixButton
-                visible: root.showError || root.showSetup
-                text: {
-                    if (DisplayConfigState.fixingInclude)
-                        return I18n.tr("Fixing...");
-                    if (root.showSetup)
-                        return I18n.tr("Setup");
-                    return I18n.tr("Fix Now");
-                }
+                visible: !root.showLegacy && root.showSetup
+                text: DisplayConfigState.fixingInclude ? I18n.tr("Setting up...") : I18n.tr("Setup")
                 backgroundColor: Theme.primary
                 textColor: Theme.primaryText
                 enabled: !DisplayConfigState.fixingInclude

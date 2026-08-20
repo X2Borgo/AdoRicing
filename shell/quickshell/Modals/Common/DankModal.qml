@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Common
 import qs.Services
+import qs.Widgets
 
 Item {
     id: root
@@ -37,6 +38,7 @@ Item {
     property bool keepContentLoaded: false
     property bool keepPopoutsOpen: false
     property var customKeyboardFocus: null
+    readonly property alias transientSurfaceTracker: _transientSurfaceTracker
     property bool useOverlayLayer: false
 
     signal opened
@@ -46,14 +48,23 @@ Item {
     readonly property var contentLoader: impl.item ? impl.item.contentLoader : null
     readonly property alias modalFocusScope: _modalFocusScope
 
+    TransientSurfaceTracker {
+        id: _transientSurfaceTracker
+    }
+
     FocusScope {
         id: _modalFocusScope
         objectName: "modalFocusScope"
         focus: true
         anchors.fill: parent
     }
+
+    // Hyprland OnDemand grab delivers keyboard focus to the modal content surface.
+    DankFocusGrab {
+        windows: (root.contentWindow ? [root.contentWindow] : []).concat(root.transientSurfaceTracker?.focusWindows ?? [])
+        wanted: KeyboardFocus.wantsGrab(root.shouldHaveFocus, root.customKeyboardFocus)
+    }
     readonly property var contentWindow: impl.item ? impl.item.contentWindow : null
-    readonly property var clickCatcher: impl.item ? impl.item.clickCatcher : null
     readonly property var effectiveScreen: impl.item ? impl.item.effectiveScreen : null
     readonly property real screenWidth: impl.item ? impl.item.screenWidth : 1920
     readonly property real screenHeight: impl.item ? impl.item.screenHeight : 1080
@@ -70,11 +81,13 @@ Item {
     }
 
     function close() {
+        transientSurfaceTracker?.closeAll?.();
         if (impl.item)
             impl.item.close();
     }
 
     function instantClose() {
+        transientSurfaceTracker?.closeAll?.();
         if (impl.item && typeof impl.item.instantClose === "function")
             impl.item.instantClose();
     }
@@ -84,7 +97,7 @@ Item {
             impl.item.toggle();
     }
 
-    readonly property var _desiredBackend: SettingsData.connectedFrameModeActive ? connectedComp : standaloneComp
+    readonly property var _desiredBackend: FrameTransitionState.effectiveConnectedFrameModeActive ? connectedComp : standaloneComp
     property var _resolvedBackend: null
 
     Component.onCompleted: _resolvedBackend = _desiredBackend
@@ -96,8 +109,6 @@ Item {
         }
     }
 
-    // Defer Loader source-component swap until impl is fully closed; avoids
-    // tearing down a modal mid-animation when frame mode is toggled.
     function _maybeResolveBackend() {
         if (_resolvedBackend === _desiredBackend)
             return;
@@ -168,6 +179,8 @@ Item {
     Connections {
         target: root
         function onShouldBeVisibleChanged() {
+            if (!root.shouldBeVisible)
+                root.transientSurfaceTracker?.closeAll?.();
             if (impl.item && impl.item.shouldBeVisible !== root.shouldBeVisible)
                 impl.item.shouldBeVisible = root.shouldBeVisible;
         }

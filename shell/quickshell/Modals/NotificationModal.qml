@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Common
 import qs.Modals.Common
@@ -10,11 +9,6 @@ DankModal {
     id: notificationModal
 
     layerNamespace: "dms:notification-center-modal"
-
-    HyprlandFocusGrab {
-        windows: [notificationModal.contentWindow]
-        active: notificationModal.useHyprlandFocusGrab && notificationModal.shouldHaveFocus
-    }
 
     property bool notificationModalOpen: false
     property var notificationListRef: null
@@ -216,12 +210,14 @@ DankModal {
                 NotificationHeader {
                     id: notificationHeader
                     keyboardController: modalKeyboardController
+                    transientSurfaceTracker: notificationModal.transientSurfaceTracker
                     onCurrentTabChanged: notificationModal.currentTab = currentTab
                     Component.onCompleted: notificationModal.notificationHeaderRef = notificationHeader
                 }
 
                 NotificationSettings {
                     id: notificationSettings
+                    transientSurfaceTracker: notificationModal.transientSurfaceTracker
                     expanded: notificationHeader.showSettings
                 }
 
@@ -231,6 +227,7 @@ DankModal {
                     height: parent.height - y
                     visible: notificationHeader.currentTab === 0
                     keyboardController: modalKeyboardController
+                    transientSurfaceTracker: notificationModal.transientSurfaceTracker
                     Component.onCompleted: {
                         notificationModal.notificationListRef = notificationList;
                         if (modalKeyboardController) {

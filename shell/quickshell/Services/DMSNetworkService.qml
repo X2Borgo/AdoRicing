@@ -41,6 +41,9 @@ Singleton {
     property var savedConnections: []
     property var ssidToConnectionName: ({})
     property var wifiSignalIcon: {
+        if (isConnecting) {
+            return "wifi";
+        }
         if (!wifiConnected) {
             return "wifi_off";
         }
@@ -53,7 +56,7 @@ Singleton {
         return "wifi_1_bar";
     }
 
-    property string userPreference: "auto"
+    readonly property string userPreference: SettingsData.networkPreference
     property bool isConnecting: false
     property string connectingSSID: ""
     property string connectionError: ""
@@ -66,6 +69,7 @@ Singleton {
     property bool changingPreference: false
     property string targetPreference: ""
     property var savedWifiNetworks: []
+    readonly property int savedWifiStateApiVersion: 26
     property string connectionStatus: ""
     property string lastConnectionError: ""
     property bool passwordDialogShouldReopen: false
@@ -80,6 +84,8 @@ Singleton {
     property string lastConnectedVpnUuid: ""
     property string pendingVpnUuid: ""
     property var vpnBusyStartTime: 0
+    property string vpnError: ""
+    property string vpnErrorUuid: ""
 
     property var profiles: {
         const mergedProfiles = vpnProfiles ? vpnProfiles.slice() : [];
@@ -133,6 +139,17 @@ Singleton {
     property alias isBusy: root.vpnIsBusy
     property alias connected: root.vpnConnected
 
+    function vpnStateForUuid(uuid) {
+        if (!uuid)
+            return "";
+        const match = vpnActive.find(v => v.uuid === uuid);
+        return match ? (match.state || "") : "";
+    }
+
+    function isVpnConnectingUuid(uuid) {
+        return vpnStateForUuid(uuid) === "activating" || (vpnIsBusy && pendingVpnUuid === uuid);
+    }
+
     property string networkInfoSSID: ""
     property string networkInfoDetails: ""
     property bool networkInfoLoading: false
@@ -170,7 +187,6 @@ Singleton {
     }
 
     Component.onCompleted: {
-        root.userPreference = SettingsData.networkPreference;
         lastConnectedVpnUuid = SessionData.vpnLastConnected || "";
         if (socketPath && socketPath.length > 0) {
             checkDMSCapabilities();
@@ -306,17 +322,21 @@ Singleton {
 
         if (state.wifiNetworks) {
             wifiNetworks = state.wifiNetworks;
+        }
 
+        if (state.wifiNetworks || state.savedWifiNetworks) {
+            const hasSavedWifiState = DMSService.apiVersion >= savedWifiStateApiVersion && Array.isArray(state.savedWifiNetworks);
+            const sourceSavedNetworks = hasSavedWifiState ? state.savedWifiNetworks : (state.wifiNetworks || []).filter(network => network.saved);
             const saved = [];
             const mapping = {};
-            for (const network of state.wifiNetworks) {
-                if (network.saved) {
-                    saved.push({
-                        ssid: network.ssid,
-                        saved: true
-                    });
+            for (const network of sourceSavedNetworks) {
+                const normalized = Object.assign({}, network, {
+                    saved: true,
+                    outOfRange: hasSavedWifiState ? network.outOfRange === true : false
+                });
+                saved.push(normalized);
+                if (network?.ssid)
                     mapping[network.ssid] = network.ssid;
-                }
             }
             savedConnections = saved;
             savedWifiNetworks = saved;
@@ -363,6 +383,17 @@ Singleton {
                 }
             }
         }
+
+        const incomingVpnError = state.vpnError || "";
+        if (incomingVpnError && incomingVpnError !== vpnError) {
+            vpnIsBusy = false;
+            pendingVpnUuid = "";
+            vpnBusyStartTime = 0;
+            const failedName = (vpnProfiles.find(p => p.uuid === state.vpnErrorUuid)?.name) || I18n.tr("VPN");
+            ToastService.showError(I18n.tr("%1: %2").arg(failedName).arg(incomingVpnError));
+        }
+        vpnError = incomingVpnError;
+        vpnErrorUuid = state.vpnErrorUuid || "";
 
         isConnecting = state.isConnecting || false;
         connectingSSID = state.connectingSSID || "";
@@ -459,6 +490,8 @@ Singleton {
             return;
         pendingConnectionSSID = ssid;
         pendingConnectionStartTime = Date.now();
+        isConnecting = true;
+        connectingSSID = ssid;
         connectionError = "";
         connectionStatus = "connecting";
         credentialsRequested = false;
@@ -502,6 +535,8 @@ Singleton {
                 connectionError = response.error;
                 lastConnectionError = response.error;
                 pendingConnectionSSID = "";
+                isConnecting = false;
+                connectingSSID = "";
                 connectionStatus = "failed";
                 ToastService.showError(I18n.tr("Failed to start connection to %1").arg(ssid));
             }
@@ -540,6 +575,12 @@ Singleton {
         };
 
         credentialsRequested = false;
+
+        if (credentialsReason === "wrong-password" && credentialsSSID && credentialsSetting === "802-11-wireless-security") {
+            pendingConnectionSSID = credentialsSSID;
+            pendingConnectionStartTime = Date.now();
+            connectionStatus = "connecting";
+        }
 
         DMSService.sendRequest("network.credentials.submit", params, response => {
             if (response.error) {
@@ -593,6 +634,7 @@ Singleton {
                 }
                 wifiNetworks = updated;
                 networksUpdated();
+                Qt.callLater(() => refreshSavedWifiNetworks());
             }
             forgetSSID = "";
         });
@@ -629,7 +671,6 @@ Singleton {
     function setNetworkPreference(preference) {
         if (!networkAvailable)
             return;
-        userPreference = preference;
         changingPreference = true;
         targetPreference = preference;
         SettingsData.set("networkPreference", preference);
@@ -981,5 +1022,12 @@ Singleton {
                 Qt.callLater(() => getState());
             }
         });
+    }
+
+    function refreshSavedWifiNetworks() {
+        if (!networkAvailable)
+            return;
+
+        getState();
     }
 }

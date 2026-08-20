@@ -12,6 +12,9 @@ Item {
     LayoutMirroring.enabled: I18n.isRtl
     LayoutMirroring.childrenInherit: true
 
+    // Bar Inset Padding: resolve the "auto" sentinel (stored < 0) to the frame thickness for the slider display.
+    readonly property int frameInsetPaddingDisplay: SettingsData.frameBarInsetPadding < 0 ? Math.round(SettingsData.frameThickness) : SettingsData.frameBarInsetPadding
+
     DankFlickable {
         anchors.fill: parent
         clip: true
@@ -158,6 +161,27 @@ Item {
                     }
                 }
 
+                SettingsSliderRow {
+                    id: frameBarInsetPaddingSlider
+                    settingKey: "frameBarInsetPadding"
+                    tags: ["frame", "bar", "edge", "inset", "padding", "corner", "end"]
+                    text: I18n.tr("Bar Inset Padding")
+                    description: I18n.tr("Gap between the end widgets and the bar ends (0 = edge-to-edge)")
+                    unit: "px"
+                    minimum: 0
+                    maximum: 48
+                    step: 1
+                    defaultValue: Math.round(SettingsData.frameThickness)
+                    value: root.frameInsetPaddingDisplay
+                    onSliderDragFinished: v => SettingsData.set("frameBarInsetPadding", v)
+
+                    Binding {
+                        target: frameBarInsetPaddingSlider
+                        property: "value"
+                        value: root.frameInsetPaddingDisplay
+                    }
+                }
+
                 SettingsToggleRow {
                     id: frameBlurToggle
                     settingKey: "frameBlurEnabled"
@@ -205,6 +229,9 @@ Item {
                     tags: ["frame", "border", "color", "theme", "primary", "surface", "default"]
                     text: I18n.tr("Border Color")
                     model: [I18n.tr("Default"), I18n.tr("Primary"), I18n.tr("Surface"), I18n.tr("Custom")]
+                    buttonPadding: Theme.spacingS
+                    minButtonWidth: 44
+                    textSize: Theme.fontSizeSmall
                     currentIndex: {
                         const fc = SettingsData.frameColor;
                         if (!fc || fc === "default")
@@ -308,15 +335,6 @@ Item {
                     onToggled: checked => SettingsData.set("frameCloseGaps", !checked)
                 }
 
-                SettingsToggleRow {
-                    settingKey: "frameUseSpotlightLauncher"
-                    tags: ["frame", "connected", "launcher", "spotlight", "search", "minimal"]
-                    text: I18n.tr("Use Spotlight Launcher")
-                    description: I18n.tr("Use the centered minimal launcher instead of the connected V2 launcher")
-                    checked: SettingsData.frameUseSpotlightLauncher
-                    onToggled: checked => SettingsData.set("frameUseSpotlightLauncher", checked)
-                }
-
                 SettingsButtonGroupRow {
                     settingKey: "frameLauncherEmergeSide"
                     tags: ["frame", "connected", "launcher", "modal", "emerge", "direction", "bottom", "top"]
@@ -338,6 +356,15 @@ Item {
                     description: I18n.tr("Use the extended surface for launcher content")
                     checked: SettingsData.frameLauncherArcExtender
                     onToggled: checked => SettingsData.set("frameLauncherArcExtender", checked)
+                }
+
+                SettingsToggleRow {
+                    settingKey: "frameLauncherEdgeHover"
+                    tags: ["frame", "connected", "launcher", "hover", "edge", "reveal"]
+                    text: I18n.tr("Edge Hover Reveal")
+                    description: I18n.tr("Open the launcher by hovering the emerge edge (when free of bar and dock)")
+                    checked: SettingsData.frameLauncherEdgeHover
+                    onToggled: checked => SettingsData.set("frameLauncherEdgeHover", checked)
                 }
             }
 

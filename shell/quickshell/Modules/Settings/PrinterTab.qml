@@ -28,6 +28,16 @@ Item {
     property string newPrinterInfo: ""
     property var suggestedPPDs: []
 
+    readonly property string effectiveDeviceUri: {
+        if (selectedDeviceUri)
+            return selectedDeviceUri;
+        if (!manualEntryMode || !manualHost)
+            return "";
+        const port = parseInt(manualPort) || 631;
+        const path = manualProtocol === "ipp" || manualProtocol === "ipps" ? "/ipp/print" : "";
+        return `${manualProtocol}://${manualHost}:${port}${path}`;
+    }
+
     function resetAddPrinterForm() {
         manualEntryMode = false;
         manualHost = "";
@@ -173,7 +183,7 @@ Item {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                        color: Theme.outlineStrong
                     }
 
                     Grid {
@@ -286,7 +296,7 @@ Item {
                             width: 28
                             height: 28
                             radius: 14
-                            color: addPrinterToggleArea.containsMouse ? Theme.surfacePressed : "transparent"
+                            color: addPrinterToggleArea.containsMouse ? Theme.surfacePressed : Theme.withAlpha(Theme.surfacePressed, 0)
                             anchors.verticalCenter: parent.verticalCenter
 
                             DankIcon {
@@ -324,7 +334,7 @@ Item {
                         Rectangle {
                             width: parent.width
                             height: 1
-                            color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                            color: Theme.outlineStrong
                         }
 
                         Row {
@@ -512,6 +522,7 @@ Item {
                                     text: printerTab.manualHost
                                     onTextEdited: {
                                         printerTab.manualHost = text;
+                                        printerTab.selectedDeviceUri = "";
                                         printerTab.testConnectionResult = null;
                                     }
                                 }
@@ -536,6 +547,7 @@ Item {
                                     text: printerTab.manualPort
                                     onTextEdited: {
                                         printerTab.manualPort = text;
+                                        printerTab.selectedDeviceUri = "";
                                         printerTab.testConnectionResult = null;
                                     }
                                 }
@@ -562,6 +574,7 @@ Item {
                                     options: ["ipp", "ipps", "lpd", "socket"]
                                     onValueChanged: value => {
                                         printerTab.manualProtocol = value;
+                                        printerTab.selectedDeviceUri = "";
                                         printerTab.testConnectionResult = null;
                                     }
                                 }
@@ -661,7 +674,7 @@ Item {
 
                                 Row {
                                     spacing: Theme.spacingS
-                                    visible: !printerTab.testConnectionResult?.success && printerTab.testConnectionResult?.data?.error
+                                    visible: !!(printerTab.testConnectionResult?.data?.error || printerTab.testConnectionResult?.error)
 
                                     Item {
                                         width: 80
@@ -820,9 +833,9 @@ Item {
                                 text: CupsService.creatingPrinter ? I18n.tr("Creating...") : I18n.tr("Create Printer")
                                 iconName: CupsService.creatingPrinter ? "sync" : "add"
                                 buttonHeight: 36
-                                enabled: printerTab.newPrinterName.length > 0 && printerTab.selectedDeviceUri.length > 0 && printerTab.selectedPpd.length > 0 && !CupsService.creatingPrinter
+                                enabled: printerTab.newPrinterName.length > 0 && printerTab.effectiveDeviceUri.length > 0 && printerTab.selectedPpd.length > 0 && !CupsService.creatingPrinter
                                 onClicked: {
-                                    CupsService.createPrinter(printerTab.newPrinterName, printerTab.selectedDeviceUri, printerTab.selectedPpd, {
+                                    CupsService.createPrinter(printerTab.newPrinterName, printerTab.effectiveDeviceUri, printerTab.selectedPpd, {
                                         location: printerTab.newPrinterLocation,
                                         information: printerTab.newPrinterInfo
                                     });
@@ -900,7 +913,7 @@ Item {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                        color: Theme.outlineStrong
                     }
 
                     Item {
@@ -930,7 +943,7 @@ Item {
 
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: Theme.spacingXS
                         visible: CupsService.printerNames.length > 0
 
                         Repeater {
@@ -987,7 +1000,7 @@ Item {
 
                                             Column {
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                spacing: 2
+                                                spacing: Theme.spacingXXS
                                                 width: parent.width - 20 - Theme.spacingS
 
                                                 StyledText {
@@ -1049,7 +1062,7 @@ Item {
                                                 width: 28
                                                 height: 28
                                                 radius: 14
-                                                color: expandBtn.containsMouse ? Theme.surfacePressed : "transparent"
+                                                color: expandBtn.containsMouse ? Theme.surfacePressed : Theme.withAlpha(Theme.surfacePressed, 0)
 
                                                 DankIcon {
                                                     anchors.centerIn: parent
@@ -1073,7 +1086,7 @@ Item {
                                                 width: 28
                                                 height: 28
                                                 radius: 14
-                                                color: deleteBtn.containsMouse ? Theme.errorHover : "transparent"
+                                                color: deleteBtn.containsMouse ? Theme.errorHover : Theme.withAlpha(Theme.errorHover, 0)
 
                                                 DankIcon {
                                                     anchors.centerIn: parent
@@ -1453,13 +1466,13 @@ Item {
                                                                 anchors.right: parent.right
                                                                 anchors.rightMargin: Theme.spacingS
                                                                 anchors.verticalCenter: parent.verticalCenter
-                                                                spacing: 4
+                                                                spacing: Theme.spacingXS
 
                                                                 Rectangle {
                                                                     width: 24
                                                                     height: 24
                                                                     radius: 12
-                                                                    color: holdJobBtn.containsMouse ? Theme.surfacePressed : "transparent"
+                                                                    color: holdJobBtn.containsMouse ? Theme.surfacePressed : Theme.withAlpha(Theme.surfacePressed, 0)
                                                                     visible: modelData.state === "pending"
 
                                                                     DankIcon {
@@ -1482,7 +1495,7 @@ Item {
                                                                     width: 24
                                                                     height: 24
                                                                     radius: 12
-                                                                    color: restartJobBtn.containsMouse ? Theme.surfacePressed : "transparent"
+                                                                    color: restartJobBtn.containsMouse ? Theme.surfacePressed : Theme.withAlpha(Theme.surfacePressed, 0)
                                                                     visible: modelData.state === "pending-held" || modelData.state === "completed" || modelData.state === "aborted"
 
                                                                     DankIcon {
@@ -1505,7 +1518,7 @@ Item {
                                                                     width: 24
                                                                     height: 24
                                                                     radius: 12
-                                                                    color: cancelJobBtn.containsMouse ? Theme.errorHover : "transparent"
+                                                                    color: cancelJobBtn.containsMouse ? Theme.errorHover : Theme.withAlpha(Theme.errorHover, 0)
 
                                                                     DankIcon {
                                                                         anchors.centerIn: parent
@@ -1596,12 +1609,12 @@ Item {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                        color: Theme.outlineStrong
                     }
 
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: Theme.spacingXS
 
                         Repeater {
                             model: CupsService.printerClasses
@@ -1632,7 +1645,7 @@ Item {
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
+                                        spacing: Theme.spacingXXS
 
                                         StyledText {
                                             text: modelData.name || I18n.tr("Unknown")
@@ -1659,7 +1672,7 @@ Item {
                                         width: 28
                                         height: 28
                                         radius: 14
-                                        color: deleteClassBtn.containsMouse ? Theme.errorHover : "transparent"
+                                        color: deleteClassBtn.containsMouse ? Theme.errorHover : Theme.withAlpha(Theme.errorHover, 0)
 
                                         DankIcon {
                                             anchors.centerIn: parent

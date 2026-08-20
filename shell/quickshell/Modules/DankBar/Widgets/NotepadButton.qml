@@ -11,28 +11,47 @@ BasePill {
     id: root
 
     readonly property string focusedScreenName: (CompositorService.isHyprland && typeof Hyprland !== "undefined" && Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.monitor ? (Hyprland.focusedWorkspace.monitor.name || "") : CompositorService.isNiri && typeof NiriService !== "undefined" && NiriService.currentOutput ? NiriService.currentOutput : "")
+    readonly property string targetScreenName: parentScreen?.name || focusedScreenName
 
     function resolveNotepadInstance() {
-        if (typeof notepadSlideoutVariants === "undefined" || !notepadSlideoutVariants || !notepadSlideoutVariants.instances) {
+        const slideouts = PopoutService.notepadSlideouts;
+        if (!slideouts || slideouts.length === 0) {
             return null;
         }
 
-        const targetScreen = focusedScreenName;
+        const targetScreen = targetScreenName;
         if (targetScreen) {
-            for (var i = 0; i < notepadSlideoutVariants.instances.length; i++) {
-                var slideout = notepadSlideoutVariants.instances[i];
+            for (var i = 0; i < slideouts.length; i++) {
+                var slideout = slideouts[i];
                 if (slideout.modelData && slideout.modelData.name === targetScreen) {
                     return slideout;
                 }
             }
         }
 
-        return notepadSlideoutVariants.instances.length > 0 ? notepadSlideoutVariants.instances[0] : null;
+        return slideouts[0];
     }
 
     readonly property var notepadInstance: resolveNotepadInstance()
-    readonly property bool isActive: notepadInstance?.isVisible ?? false
+    readonly property bool popoutDefault: SettingsData.notepadDefaultMode === "popout"
+    readonly property bool isActive: popoutDefault ? (PopoutService.notepadPopout?.visible ?? false) : (notepadInstance?.isVisible ?? false)
     property bool isAutoHideBar: false
+
+    function showActiveSurface() {
+        if (root.popoutDefault) {
+            PopoutService.openNotepadPopout();
+            return;
+        }
+        const instance = prepareNotepadInstance(root.notepadInstance);
+        if (instance && typeof instance.show === "function")
+            instance.show();
+    }
+
+    function prepareNotepadInstance(instance) {
+        if (instance)
+            instance.triggerUsesOverlayLayer = root.barUsesOverlayLayer;
+        return instance;
+    }
 
     readonly property real minTooltipY: {
         if (!parentScreen || !(axis?.isVertical ?? false)) {
@@ -68,18 +87,14 @@ BasePill {
     function openTabByIndex(tabIndex) {
         if (tabIndex < 0)
             return;
-        if (root.notepadInstance && typeof root.notepadInstance.show === "function") {
-            root.notepadInstance.show();
-        }
+        showActiveSurface();
         Qt.callLater(() => {
             NotepadStorageService.switchToTab(tabIndex);
         });
     }
 
     function openNewNote() {
-        if (root.notepadInstance && typeof root.notepadInstance.show === "function") {
-            root.notepadInstance.show();
-        }
+        showActiveSurface();
         Qt.callLater(() => {
             NotepadStorageService.createNewTab();
         });
@@ -138,7 +153,11 @@ BasePill {
                 openContextMenu();
                 return;
             }
-            const inst = root.notepadInstance;
+            if (root.popoutDefault) {
+                PopoutService.toggleNotepadPopout();
+                return;
+            }
+            const inst = prepareNotepadInstance(root.notepadInstance);
             if (inst) {
                 inst.toggle();
             }
@@ -253,8 +272,8 @@ BasePill {
             height: Math.max(60, menuColumn.implicitHeight + Theme.spacingS * 2)
             color: Theme.withAlpha(Theme.surfaceContainer, Theme.popupTransparency)
             radius: Theme.cornerRadius
-            border.color: BlurService.enabled ? BlurService.borderColor : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.08)
-            border.width: BlurService.enabled ? BlurService.borderWidth : 1
+            border.color: BlurService.borderColor
+            border.width: BlurService.borderWidth
 
             opacity: contextMenuWindow.visible ? 1 : 0
             visible: opacity > 0
@@ -294,7 +313,7 @@ BasePill {
                         width: parent.width
                         height: 30
                         radius: Theme.cornerRadius
-                        color: tabArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : "transparent"
+                        color: tabArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
 
                         Row {
                             anchors.fill: parent
@@ -336,7 +355,7 @@ BasePill {
                     width: parent.width
                     height: 30
                     radius: Theme.cornerRadius
-                    color: newNoteArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : "transparent"
+                    color: newNoteArea.containsMouse ? BlurService.hoverColor(Theme.widgetBaseHoverColor) : Theme.withAlpha(BlurService.hoverColor(Theme.widgetBaseHoverColor), 0)
 
                     Row {
                         anchors.fill: parent

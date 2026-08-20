@@ -50,7 +50,7 @@ DankPopout {
         }
     }
 
-    popupWidth: 400
+    popupWidth: 400 + Theme.spacingL
     popupHeight: stablePopupHeight
     positioning: ""
     suspendShadowWhileResizing: false
@@ -59,6 +59,11 @@ DankPopout {
 
     function toggle() {
         notificationHistoryVisible = !notificationHistoryVisible;
+    }
+
+    // Re-open without toggling the flag (used when retargeting to another monitor).
+    function present() {
+        openSized();
     }
 
     function openSized() {
@@ -283,11 +288,13 @@ DankPopout {
                     NotificationHeader {
                         id: notificationHeader
                         objectName: "notificationHeader"
+                        transientSurfaceTracker: root.transientSurfaceTracker
                         onHeightChanged: notificationContent.cachedHeaderHeight = height
                     }
 
                     NotificationSettings {
                         id: notificationSettings
+                        transientSurfaceTracker: root.transientSurfaceTracker
                         expanded: notificationHeader.showSettings
                         maxAllowedHeight: notificationContent.settingsMaxHeight
                     }
@@ -306,6 +313,7 @@ DankPopout {
                             anchors.topMargin: -(shadowVerticalGutter + delegateShadowGutter / 2)
                             anchors.bottomMargin: -(shadowVerticalGutter + delegateShadowGutter / 2)
                             cardAnimateExpansion: true
+                            transientSurfaceTracker: root.transientSurfaceTracker
                         }
                     }
 

@@ -12,14 +12,27 @@ Singleton {
     property bool suppressSound: true
     property bool previousPluggedState: false
 
-    readonly property var scale: 100 / SettingsData.batteryChargeLimit
-
     Timer {
         id: startupTimer
         interval: 500
         repeat: false
         running: true
-        onTriggered: root.suppressSound = false
+        onTriggered: {
+            root.suppressSound = false;
+            root.applyPowerProfile();
+        }
+    }
+
+    function applyPowerProfile() {
+        if (!batteryAvailable)
+            return;
+        const profileValue = isPluggedIn ? SettingsData.acProfileName : SettingsData.batteryProfileName;
+        if (profileValue === "")
+            return;
+        const targetProfile = parseInt(profileValue);
+        if (isNaN(targetProfile) || PowerProfiles.profile === targetProfile)
+            return;
+        PowerProfiles.profile = targetProfile;
     }
 
     readonly property string preferredBatteryOverride: Quickshell.env("DMS_PREFERRED_BATTERY")
@@ -44,6 +57,22 @@ Singleton {
         return batteries.find(dev => dev.nativePath.toLowerCase().includes(override)) || null;
     }
     readonly property bool preferredDeviceKnown: preferredDevice && preferredDevice.ready && preferredDevice.state !== UPowerDeviceState.Unknown
+    readonly property bool _hasKnownChargingState: {
+        if (!batteryAvailable)
+            return false;
+        if (usePreferred)
+            return preferredDeviceKnown;
+        return stateKnownBatteries.length > 0;
+    }
+    readonly property bool _currentIsCharging: {
+        if (!batteryAvailable)
+            return false;
+        if (usePreferred && preferredDeviceKnown)
+            return preferredDevice.state === UPowerDeviceState.Charging;
+        if (usePreferred)
+            return false;
+        return stateKnownBatteries.some(b => b.state === UPowerDeviceState.Charging);
+    }
 
     // Main battery (for backward compatibility)
     readonly property UPowerDevice device: {
@@ -62,7 +91,7 @@ Singleton {
             return 0;
         if (batteryCapacity === 0) {
             if (usePreferred && preferredDeviceKnown) {
-                const val = Math.round(preferredDevice.percentage * 100 * scale);
+                const val = Math.min(100, Math.round(preferredDevice.percentage * 100));
                 _lastBatteryLevel = val;
                 return val;
             }
@@ -72,7 +101,7 @@ Singleton {
             if (validBatteries.length === 0)
                 return _lastBatteryLevel;
             const avgPercentage = validBatteries.reduce((sum, b) => sum + b.percentage, 0) / validBatteries.length;
-            const val = Math.round(avgPercentage * 100 * scale);
+            const val = Math.min(100, Math.round(avgPercentage * 100));
             _lastBatteryLevel = val;
             return val;
         }
@@ -80,29 +109,103 @@ Singleton {
         const cap = batteryCapacity;
         if (cap === 0)
             return _lastBatteryLevel;
-        const val = Math.round((energy * 100) / cap * scale);
+        const val = Math.min(100, Math.round((energy * 100) / cap));
         _lastBatteryLevel = val;
         return val;
     }
-    readonly property bool isCharging: {
-        if (!batteryAvailable)
-            return false;
-        if (usePreferred && preferredDeviceKnown) {
-            const preferredCharging = preferredDevice.state === UPowerDeviceState.Charging;
-            _lastIsCharging = preferredCharging;
-            return preferredCharging;
-        }
-        if (usePreferred && preferredDevice)
-            return _lastIsCharging;
-        const val = stateKnownBatteries.some(b => b.state === UPowerDeviceState.Charging);
-        if (stateKnownBatteries.length > 0)
-            _lastIsCharging = val;
-        return stateKnownBatteries.length > 0 ? val : _lastIsCharging;
-    }
+    readonly property bool isCharging: _hasKnownChargingState ? _currentIsCharging : _lastIsCharging
 
     // Is the system plugged in (Is not running on battery)
     readonly property bool isPluggedIn: !UPower.onBattery
-    readonly property bool isLowBattery: batteryAvailable && batteryLevel <= 20
+    readonly property bool isLowBattery: batteryAvailable && batteryLevel <= SettingsData.batteryLowThreshold
+    readonly property bool isCriticalBattery: batteryAvailable && batteryLevel <= SettingsData.batteryCriticalThreshold
+
+    property bool _hasNotifiedLowBattery: false
+    property bool _hasNotifiedCriticalBattery: false
+    property bool _hasNotifiedChargeLimit: false
+
+    function _syncLastIsCharging() {
+        if (_hasKnownChargingState)
+            _lastIsCharging = _currentIsCharging;
+    }
+
+    on_HasKnownChargingStateChanged: _syncLastIsCharging()
+    on_CurrentIsChargingChanged: _syncLastIsCharging()
+
+    Component.onCompleted: _syncLastIsCharging()
+
+    function sendAlert(title, message, isWarning, category, notificationType) {
+        if (notificationType === 1) {
+            Quickshell.execDetached(["notify-send", "-u", isWarning ? "critical" : "normal", "-a", "DMS", "-i", isWarning ? "battery-caution" : "battery-charging", title, message]);
+        } else {
+            if (isWarning) {
+                ToastService.showWarning(title, message, "", category);
+            } else {
+                ToastService.showInfo(title, message, "", category);
+            }
+        }
+    }
+
+    onBatteryLevelChanged: {
+        if (isCharging && batteryLevel >= SettingsData.batteryChargeLimit) {
+            if (!_hasNotifiedChargeLimit && SettingsData.batteryNotifyChargeLimit) {
+                _hasNotifiedChargeLimit = true;
+                sendAlert(I18n.tr("Charge Limit Reached"), I18n.tr("Battery has charged to your set limit of %1%").arg(SettingsData.batteryChargeLimit), false, "battery-charge-limit", SettingsData.batteryChargeLimitNotificationType);
+            }
+        } else if (!isCharging || batteryLevel < SettingsData.batteryChargeLimit - 2) {
+            _hasNotifiedChargeLimit = false;
+        }
+
+        if (isCharging) {
+            _hasNotifiedLowBattery = false;
+            _hasNotifiedCriticalBattery = false;
+            return;
+        }
+
+        // Critical battery check (higher priority)
+        if (isCriticalBattery) {
+            if (!_hasNotifiedCriticalBattery && SettingsData.batteryNotifyCritical) {
+                _hasNotifiedCriticalBattery = true;
+                sendAlert(I18n.tr("Critical Battery"), I18n.tr("Battery is at %1% - Connect charger immediately!").arg(batteryLevel), true, "battery-critical", SettingsData.batteryCriticalNotificationType);
+            }
+            return;
+        }
+
+        if (batteryLevel > SettingsData.batteryCriticalThreshold) {
+            _hasNotifiedCriticalBattery = false;
+        }
+
+        // Low battery check
+        if (isLowBattery) {
+            if (!_hasNotifiedLowBattery && SettingsData.batteryNotifyLow) {
+                _hasNotifiedLowBattery = true;
+                sendAlert(I18n.tr("Low Battery"), I18n.tr("Battery is at %1% - Consider charging soon").arg(batteryLevel), true, "battery-low", SettingsData.batteryLowNotificationType);
+            }
+
+            if (SettingsData.batteryAutoPowerSaver && PowerProfileWatcher.available) {
+                if (PowerProfileWatcher.currentProfile !== PowerProfile.PowerSaver) {
+                    PowerProfileWatcher.applyProfile(PowerProfile.PowerSaver);
+                }
+            }
+        }
+
+        if (batteryLevel > SettingsData.batteryLowThreshold) {
+            _hasNotifiedLowBattery = false;
+        }
+    }
+
+    onIsChargingChanged: {
+        // Reset average when switching states
+        _smoothedChangeRate = (_hasKnownChargingState && changeRate > 0) ? changeRate : 0;
+        _lastRateSampleTime = _smoothedChangeRate > 0 ? Date.now() : 0;
+
+        if (isCharging) {
+            _hasNotifiedLowBattery = false;
+            _hasNotifiedCriticalBattery = false;
+        } else {
+            _hasNotifiedChargeLimit = false;
+        }
+    }
 
     onIsPluggedInChanged: {
         if (suppressSound || !batteryAvailable) {
@@ -118,14 +221,7 @@ Singleton {
             }
         }
 
-        const profileValue = BatteryService.isPluggedIn ? SettingsData.acProfileName : SettingsData.batteryProfileName;
-
-        if (profileValue !== "") {
-            const targetProfile = parseInt(profileValue);
-            if (!isNaN(targetProfile) && PowerProfiles.profile !== targetProfile) {
-                PowerProfiles.profile = targetProfile;
-            }
-        }
+        applyPowerProfile();
 
         previousPluggedState = isPluggedIn;
     }
@@ -145,6 +241,38 @@ Singleton {
         const val = stateKnownBatteries.reduce((sum, b) => sum + b.changeRate, 0);
         _lastChangeRate = val;
         return val;
+    }
+
+    // A time-weighted exponential moving average based on the aggregated charge/discharge rate
+    property real _smoothedChangeRate: 0
+    property real _lastRateSampleTime: 0
+    readonly property real _rateSmoothingHalfLife: 90 // in seconds
+
+    function _updateSmoothedRate() {
+        if (!_hasKnownChargingState || changeRate <= 0)
+            return;
+
+        const now = Date.now();
+        if (_smoothedChangeRate <= 0 || _lastRateSampleTime <= 0) {
+            _smoothedChangeRate = changeRate;
+            _lastRateSampleTime = now;
+            return;
+        }
+
+        const dt = (now - _lastRateSampleTime) / 1000;
+        _lastRateSampleTime = now;
+        if (dt <= 0)
+            return;
+
+        const tau = _rateSmoothingHalfLife / Math.LN2;
+        const alpha = 1 - Math.exp(-dt / tau);
+        _smoothedChangeRate += alpha * (changeRate - _smoothedChangeRate);
+    }
+
+    onChangeRateChanged: _updateSmoothedRate()
+    onBatteryAvailableChanged: if (!batteryAvailable) {
+        _smoothedChangeRate = 0;
+        _lastRateSampleTime = 0;
     }
 
     // Aggregated battery health
@@ -218,7 +346,7 @@ Singleton {
     // Aggregated battery status
     readonly property string batteryStatus: {
         if (!batteryAvailable) {
-            return I18n.tr("No Battery", "battery status");
+            return I18n.tr("No battery", "battery status");
         }
 
         const targetBatteries = stateKnownBatteries.length > 0 ? stateKnownBatteries : batteries;
@@ -236,19 +364,16 @@ Singleton {
     readonly property bool suggestPowerSaver: false
 
     readonly property var bluetoothDevices: {
-        const btDevices = [];
         const bluetoothTypes = [UPowerDeviceType.BluetoothGeneric, UPowerDeviceType.Headphones, UPowerDeviceType.Headset, UPowerDeviceType.Keyboard, UPowerDeviceType.Mouse, UPowerDeviceType.Speakers];
 
-        for (var i = 0; i < UPower.devices.count; i++) {
-            const dev = UPower.devices.get(i);
-            if (dev && dev.ready && bluetoothTypes.includes(dev.type)) {
-                btDevices.push({
-                    "name": dev.model || UPowerDeviceType.toString(dev.type),
-                    "percentage": Math.round(dev.percentage * 100),
-                    "type": dev.type
-                });
-            }
-        }
+        const btDevices = UPower.devices.values.filter(dev => dev && dev.ready && bluetoothTypes.includes(dev.type)).map(dev => {
+            return {
+                "name": dev.model || UPowerDeviceType.toString(dev.type),
+                "percentage": Math.round(dev.percentage * 100),
+                "type": dev.type
+            };
+        });
+
         return btDevices;
     }
 
@@ -258,8 +383,8 @@ Singleton {
             return "Unknown";
         }
 
-        let totalTime = 0;
-        totalTime = (isCharging) ? ((batteryCapacity - batteryEnergy) / changeRate) : (batteryEnergy / changeRate);
+        const rate = _smoothedChangeRate > 0 ? _smoothedChangeRate : changeRate;
+        const totalTime = (isCharging) ? ((batteryCapacity - batteryEnergy) / rate) : (batteryEnergy / rate);
         const avgTime = Math.abs(totalTime * 3600);
         if (!avgTime || avgTime <= 0 || avgTime > 86400)
             return "Unknown";

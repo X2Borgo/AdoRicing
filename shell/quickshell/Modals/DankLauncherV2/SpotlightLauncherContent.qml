@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Quickshell
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -12,37 +11,74 @@ FocusScope {
     property var parentModal: null
     property alias searchField: searchInput
     property alias controller: searchController
+    readonly property alias activeContextMenu: contextMenu
+    property var transientSurfaceTracker: null
 
     readonly property bool _hasQuery: searchInput.text.length > 0
     readonly property real _searchBarH: 56
-    readonly property real _surfaceInset: BlurService.enabled ? (_hasQuery ? Theme.spacingS : Theme.spacingXS) : 0
-    readonly property real _searchAreaH: _searchBarH + _surfaceInset * 2
+    readonly property real _searchAreaH: _searchBarH
     readonly property real _statusH: 92
     readonly property real _rowH: 64
     readonly property real _maxResultsH: Math.min(430, (parentModal?.screenHeight ?? 900) * 0.55)
     readonly property var _resultRows: _buildRows()
-    readonly property real _resultsContentH: _resultRows.length > 0 ? _resultRows.length * _rowH : _statusH
+    readonly property real _resultsContentH: _resultRows.length > 0 ? _resultRows.length * _rowH + resultsList.bottomInset : _statusH
     readonly property real _resultsH: _hasQuery ? Math.min(_resultsContentH, _maxResultsH) : 0
     readonly property int _fastDuration: 90
-    readonly property int _resizeDuration: 110
+    readonly property int _resizeDuration: Theme.expressiveDurations.fast
+    readonly property bool _blurActive: Theme.blurForegroundLayers || Theme.transparentBlurLayers
+    readonly property real _searchSurfaceAlpha: {
+        if (Theme.transparentBlurLayers)
+            return _hasQuery ? 0.34 : 0.28;
+        if (Theme.blurForegroundLayers)
+            return Math.max(Theme.popupTransparency, _hasQuery ? 0.68 : 0.74);
+        return _hasQuery ? Theme.popupTransparency : Math.max(0.68, Theme.popupTransparency * 0.9);
+    }
+    readonly property color _searchSurfaceColor: Theme.withAlpha(_hasQuery ? Theme.surfaceContainerHigh : Theme.surfaceContainer, _searchSurfaceAlpha)
+    readonly property color _searchWellColor: {
+        if (searchInput.activeFocus)
+            return Theme.withAlpha(Theme.primaryContainer, Theme.transparentBlurLayers ? 0.42 : 1.0);
+        if (Theme.transparentBlurLayers)
+            return Theme.ccPillInactiveBg;
+        return Theme.surfaceContainer;
+    }
 
-    implicitHeight: _searchAreaH + (_resultsH > 0 ? 1 + _resultsH : 0)
+    implicitHeight: _searchAreaH + resultsContainer.height
+
+    property bool _animateResize: false
+
+    Component.onCompleted: resizeAnimEnableTimer.restart()
+
+    Timer {
+        id: resizeAnimEnableTimer
+        interval: 100
+        onTriggered: root._animateResize = true
+    }
 
     function resetScroll() {
         resultsList.resetScroll();
+    }
+
+    function closeTransientUi() {
+        transientSurfaceTracker?.closeAll?.();
+        root.enabled = true;
     }
 
     function _buildRows() {
         const flat = searchController.flatModel || [];
         const sections = searchController.sections || [];
         const rows = [];
+        const seen = {};
         for (let i = 0; i < flat.length; i++) {
             const entry = flat[i];
             if (!entry || entry.isHeader || !entry.item)
                 continue;
             const section = sections[entry.sectionIndex] || null;
+            // Plugin item ids embed result content, so key them by slot position instead
+            const base = entry.item.pluginId ? (entry.sectionId + ":" + entry.indexInSection) : (entry.item.id || (entry.sectionId + ":" + (entry.item.name || entry.indexInSection)));
+            const bump = seen[base] || 0;
+            seen[base] = bump + 1;
             rows.push({
-                "_rowId": entry.item.id || (entry.sectionId + ":" + entry.indexInSection + ":" + i),
+                "_rowId": bump ? base + "#" + bump : base,
                 "item": entry.item,
                 "flatIndex": i,
                 "sectionTitle": section?.title || "",
@@ -122,13 +158,11 @@ FocusScope {
             }
             break;
         case Qt.Key_Tab:
-            if (_hasQuery)
-                _cycleCategory(false);
+            _cycleCategory(false);
             event.accepted = true;
             return;
         case Qt.Key_Backtab:
-            if (_hasQuery)
-                _cycleCategory(true);
+            _cycleCategory(true);
             event.accepted = true;
             return;
         case Qt.Key_Return:
@@ -177,13 +211,6 @@ FocusScope {
                 return;
             }
             break;
-        case Qt.Key_Slash:
-            if (event.modifiers === Qt.NoModifier && searchInput.text.length === 0) {
-                searchController.setMode("files", true);
-                event.accepted = true;
-                return;
-            }
-            break;
         }
 
         event.accepted = false;
@@ -193,6 +220,7 @@ FocusScope {
         id: searchController
         active: root.parentModal ? (root.parentModal.spotlightOpen || root.parentModal.isClosing) : true
         viewModeContext: "spotlight"
+        forceLinearNavigation: true
 
         onItemExecuted: {
             root.parentModal?.hide();
@@ -208,12 +236,32 @@ FocusScope {
         searchField: searchInput
         parentHandler: root
         allowEditActions: false
+        transientSurfaceTracker: root.transientSurfaceTracker
+    }
+
+    Connections {
+        target: root.parentModal
+        ignoreUnknownSignals: true
+
+        function onSpotlightOpenChanged() {
+            if (!root.parentModal?.spotlightOpen)
+                root.closeTransientUi();
+        }
+
+        function onContentVisibleChanged() {
+            if (!root.parentModal?.contentVisible) {
+                root.closeTransientUi();
+                return;
+            }
+            root._animateResize = false;
+            resizeAnimEnableTimer.restart();
+        }
     }
 
     Connections {
         target: searchController
-        function onModeChanged(mode) {
-            if (searchController.autoSwitchedToFiles)
+        function onModeChanged(mode, userInitiated) {
+            if (!userInitiated || !SettingsData.rememberLastMode)
                 return;
             SessionData.setLauncherLastMode(mode);
         }
@@ -233,11 +281,8 @@ FocusScope {
         Rectangle {
             id: searchBarSurface
             anchors.fill: parent
-            anchors.margins: root._surfaceInset
-            radius: height / 2
-            color: Theme.withAlpha(root._hasQuery ? Theme.surfaceContainerHigh : Theme.surfaceContainer, root._hasQuery ? Theme.popupTransparency : Math.max(0.68, Theme.popupTransparency * 0.9))
-            border.color: BlurService.enabled && !root._hasQuery ? Theme.withAlpha(Theme.outline, 0.08) : "transparent"
-            border.width: BlurService.enabled && !root._hasQuery ? 1 : 0
+            radius: Theme.cornerRadius
+            color: root._searchSurfaceColor
 
             Behavior on color {
                 ColorAnimation {
@@ -254,7 +299,7 @@ FocusScope {
                 anchors.left: parent.left
                 anchors.leftMargin: Theme.spacingM
                 anchors.verticalCenter: parent.verticalCenter
-                color: searchInput.activeFocus ? Theme.primaryContainer : Theme.surfaceContainer
+                color: root._searchWellColor
 
                 DankIcon {
                     anchors.centerIn: parent
@@ -273,8 +318,8 @@ FocusScope {
 
                 Row {
                     id: categoryRow
+                    visible: SettingsData.spotlightBarShowModeChips || root._hasQuery
                     spacing: Theme.spacingXS
-                    visible: root._hasQuery
                     anchors.verticalCenter: parent.verticalCenter
 
                     Repeater {
@@ -294,13 +339,13 @@ FocusScope {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: height / 2
-                                color: categoryChip.isSelected ? Theme.primary : chipArea.containsMouse ? Theme.surfaceHover : Theme.surfaceVariantAlpha
+                                color: chipColor.value
 
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: root._fastDuration
-                                        easing.type: Theme.standardEasing
-                                    }
+                                DankColorAnimation {
+                                    id: chipColor
+                                    to: categoryChip.isSelected ? Theme.primary : chipArea.containsMouse ? Theme.surfaceHover : Theme.surfaceVariantAlpha
+                                    duration: root._fastDuration
+                                    easingType: Theme.standardEasing
                                 }
 
                                 StyledText {
@@ -380,34 +425,16 @@ FocusScope {
         }
     }
 
-    Rectangle {
-        anchors.top: searchBarItem.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: root._surfaceInset
-        anchors.rightMargin: root._surfaceInset
-        height: 1
-        color: Theme.outlineMedium
-        opacity: root._resultsH > 0 ? 0.55 : 0
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: root._fastDuration
-                easing.type: Theme.standardEasing
-            }
-        }
-    }
-
     Item {
         id: resultsContainer
         anchors.top: searchBarItem.bottom
-        anchors.topMargin: 1
         anchors.left: parent.left
         anchors.right: parent.right
         clip: true
         height: root._resultsH
 
         Behavior on height {
+            enabled: root._animateResize
             NumberAnimation {
                 duration: root._resizeDuration
                 easing.type: Easing.BezierSpline

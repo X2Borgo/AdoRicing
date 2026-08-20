@@ -10,42 +10,72 @@ import qs.Services
 Scope {
     id: root
 
+    readonly property var log: Log.scoped("Lock")
+
     property string sharedPasswordBuffer: ""
     property bool shouldLock: false
 
-    onShouldLockChanged: {
-        IdleService.isShellLocked = shouldLock;
-        if (shouldLock && lockPowerOffArmed) {
-            lockStateCheck.restart();
-        }
+    onSharedPasswordBufferChanged: {
+        if (!powerOffFadeTimer.running)
+            return;
+        cancelPowerOffFade();
     }
 
-    Timer {
-        id: lockStateCheck
-        interval: 100
-        repeat: false
-        onTriggered: {
-            if (sessionLock.locked && lockPowerOffArmed) {
-                pendingLock = false;
-                IdleService.monitorsOff = true;
-                CompositorService.powerOffMonitors();
-                lockWakeAllowed = false;
-                lockWakeDebounce.restart();
-                lockPowerOffArmed = false;
-                dpmsReapplyTimer.start();
-            }
-        }
+    onShouldLockChanged: {
+        IdleService.isShellLocked = shouldLock;
     }
 
     property bool lockInitiatedLocally: false
     property bool pendingLock: false
+    readonly property int maxLockRetries: 3
+    property int lockRetryAttempts: 0
+    property bool lockRetryPending: false
     property bool lockPowerOffArmed: false
     property bool lockWakeAllowed: false
+    property bool customLockerSpawned: false
+    readonly property bool powerOffOnLock: SettingsData.lockScreenPowerOffMonitorsOnLock || IdleService.lockPowerOffRequested
+    property real powerOffFadeTarget: 0
+    property bool powerOffFadeInstant: false
+
+    function beginPowerOff() {
+        if (!SettingsData.fadeToDpmsEnabled || SettingsData.fadeToDpmsGracePeriod <= 0) {
+            applyMonitorsOff();
+            return;
+        }
+        powerOffFadeInstant = false;
+        powerOffFadeTarget = 1;
+        powerOffFadeTimer.restart();
+    }
+
+    function applyMonitorsOff() {
+        IdleService.monitorsOff = true;
+        CompositorService.powerOffMonitors();
+        lockWakeAllowed = false;
+        lockWakeDebounce.restart();
+        dpmsReapplyTimer.start();
+    }
+
+    function resetPowerOffFade() {
+        powerOffFadeTimer.stop();
+        powerOffFadeInstant = true;
+        powerOffFadeTarget = 0;
+    }
+
+    function cancelPowerOffFade() {
+        resetPowerOffFade();
+        IdleService.lockPowerOffRequested = false;
+    }
 
     Component.onCompleted: {
         IdleService.lockComponent = this;
         if (SettingsData.lockAtStartup)
             lock();
+    }
+
+    function notifyLockedHint(locked: bool) {
+        if (!SettingsData.loginctlLockIntegration || !DMSService.isConnected)
+            return;
+        DMSService.setLockedHint(locked, () => {});
     }
 
     function notifyLoginctl(lockAction: bool) {
@@ -57,16 +87,53 @@ Scope {
             DMSService.unlockSession(() => {});
     }
 
+    function spawnCustomLocker() {
+        IdleService.lockPowerOffRequested = false;
+        Quickshell.execDetached(["sh", "-c", SettingsData.customPowerActionLock]);
+        // The custom locker manages its own surface; DMS never engages
+        // WlSessionLock here, so isShellLocked stays false and the fade
+        // overlay would never be dismissed. Hand off by dismissing it now.
+        IdleService.dismissFadeToLock();
+        customLockerSpawned = true;
+    }
+
+    function handleLoginctlCustomLock(): bool {
+        if (!(SettingsData.customPowerActionLock?.length > 0))
+            return false;
+        if (!customLockerSpawned)
+            spawnCustomLocker();
+        return true;
+    }
+
+    function resetLockRetry() {
+        lockRetryAttempts = 0;
+        lockRetryPending = false;
+        lockRetryTimer.stop();
+    }
+
+    function handleLockLost() {
+        if (lockRetryAttempts >= maxLockRetries) {
+            log.error("Compositor refused session lock", maxLockRetries, "times - resetting lock state");
+            forceReset();
+            return;
+        }
+        lockRetryAttempts++;
+        lockRetryPending = true;
+        lockRetryTimer.restart();
+        log.warn("Session lock lost while lock requested - retry", lockRetryAttempts, "/", maxLockRetries);
+    }
+
     function lock() {
         if (SettingsData.customPowerActionLock?.length > 0) {
-            Quickshell.execDetached(["sh", "-c", SettingsData.customPowerActionLock]);
+            spawnCustomLocker();
             return;
         }
         if (shouldLock || pendingLock)
             return;
 
+        resetLockRetry();
         lockInitiatedLocally = true;
-        lockPowerOffArmed = SettingsData.lockScreenPowerOffMonitorsOnLock;
+        lockPowerOffArmed = powerOffOnLock;
 
         if (!SessionService.active && SessionService.loginctlAvailable && SettingsData.loginctlLockIntegration) {
             pendingLock = true;
@@ -78,9 +145,20 @@ Scope {
         notifyLoginctl(true);
     }
 
+    function lockAndOutputsOff() {
+        IdleService.lockPowerOffRequested = true;
+        if (sessionLock.secure) {
+            beginPowerOff();
+            return;
+        }
+        lockPowerOffArmed = true;
+        lock();
+    }
+
     function unlock() {
         if (!shouldLock)
             return;
+        resetLockRetry();
         lockInitiatedLocally = false;
         notifyLoginctl(false);
         shouldLock = false;
@@ -90,6 +168,10 @@ Scope {
         lockInitiatedLocally = false;
         pendingLock = false;
         shouldLock = false;
+        customLockerSpawned = false;
+        resetLockRetry();
+        resetPowerOffFade();
+        IdleService.lockPowerOffRequested = false;
     }
 
     function activate() {
@@ -102,17 +184,20 @@ Scope {
         function onSessionLocked() {
             if (shouldLock || pendingLock)
                 return;
+            if (handleLoginctlCustomLock())
+                return;
             if (!SessionService.active && SessionService.loginctlAvailable && SettingsData.loginctlLockIntegration) {
                 pendingLock = true;
                 lockInitiatedLocally = false;
                 return;
             }
             lockInitiatedLocally = false;
-            lockPowerOffArmed = SettingsData.lockScreenPowerOffMonitorsOnLock;
+            lockPowerOffArmed = powerOffOnLock;
             shouldLock = true;
         }
 
         function onSessionUnlocked() {
+            customLockerSpawned = false;
             if (pendingLock) {
                 pendingLock = false;
                 lockInitiatedLocally = false;
@@ -123,17 +208,25 @@ Scope {
             shouldLock = false;
         }
 
+        function onSessionResumed() {
+            if (!shouldLock || sessionLock.locked)
+                return;
+            resumeRelockTimer.restart();
+        }
+
         function onLoginctlStateChanged() {
             if (SessionService.active && pendingLock) {
                 pendingLock = false;
                 lockInitiatedLocally = true;
-                lockPowerOffArmed = SettingsData.lockScreenPowerOffMonitorsOnLock;
+                lockPowerOffArmed = powerOffOnLock;
                 shouldLock = true;
                 return;
             }
             if (SessionService.locked && !shouldLock && !pendingLock) {
+                if (handleLoginctlCustomLock())
+                    return;
                 lockInitiatedLocally = false;
-                lockPowerOffArmed = SettingsData.lockScreenPowerOffMonitorsOnLock;
+                lockPowerOffArmed = powerOffOnLock;
                 shouldLock = true;
             }
         }
@@ -144,6 +237,11 @@ Scope {
 
         function onLockRequested() {
             lock();
+        }
+
+        function onMonitorsOffChanged() {
+            if (!IdleService.monitorsOff)
+                root.resetPowerOffFade();
         }
     }
 
@@ -157,7 +255,7 @@ Scope {
     WlSessionLock {
         id: sessionLock
 
-        locked: shouldLock
+        locked: shouldLock && !lockRetryPending
 
         WlSessionLockSurface {
             id: lockSurface
@@ -166,9 +264,7 @@ Scope {
             property bool isActiveScreen: {
                 if (Quickshell.screens.length <= 1)
                     return true;
-                if (SettingsData.lockScreenActiveMonitor === "all")
-                    return true;
-                return currentScreenName === SettingsData.lockScreenActiveMonitor;
+                return SettingsData.getFilteredScreens("lockScreen").includes(screen);
             }
 
             color: isActiveScreen ? "transparent" : SettingsData.lockScreenInactiveColor
@@ -186,31 +282,78 @@ Scope {
                     root.sharedPasswordBuffer = newPassword;
                 }
             }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "black"
+                opacity: root.powerOffFadeTarget
+                visible: opacity > 0 || powerOffFadeTimer.running
+
+                Behavior on opacity {
+                    enabled: !root.powerOffFadeInstant
+                    NumberAnimation {
+                        duration: SettingsData.fadeToDpmsGracePeriod * 1000
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                MouseArea {
+                    property real baselineX: -1
+                    property real baselineY: -1
+
+                    anchors.fill: parent
+                    enabled: powerOffFadeTimer.running
+                    hoverEnabled: enabled
+                    onEnabledChanged: {
+                        baselineX = -1;
+                        baselineY = -1;
+                    }
+                    onPressed: root.cancelPowerOffFade()
+                    onWheel: root.cancelPowerOffFade()
+                    onPositionChanged: mouse => {
+                        if (baselineX < 0) {
+                            baselineX = mouse.x;
+                            baselineY = mouse.y;
+                            return;
+                        }
+                        if (Math.abs(mouse.x - baselineX) < 5 && Math.abs(mouse.y - baselineY) < 5)
+                            return;
+                        root.cancelPowerOffFade();
+                    }
+                }
+            }
         }
     }
 
     Connections {
         target: sessionLock
 
-        function onLockedChanged() {
-            if (sessionLock.locked) {
-                pendingLock = false;
-                if (lockPowerOffArmed && SettingsData.lockScreenPowerOffMonitorsOnLock) {
-                    IdleService.monitorsOff = true;
-                    CompositorService.powerOffMonitors();
-                    lockWakeAllowed = false;
-                    lockWakeDebounce.restart();
-                }
-                lockPowerOffArmed = false;
-                dpmsReapplyTimer.start();
+        function onSecureChanged() {
+            notifyLockedHint(sessionLock.secure);
+            if (!sessionLock.secure)
                 return;
-            }
+            IdleService.dismissFadeToLock();
+            lockRetryAttempts = 0;
+            pendingLock = false;
+            if (lockPowerOffArmed && powerOffOnLock)
+                beginPowerOff();
+            lockPowerOffArmed = false;
+        }
 
+        function onLockedChanged() {
+            if (sessionLock.locked)
+                return;
+            if (shouldLock && (IdleService.monitorsOff || lockPowerOffArmed || IdleService.lockPowerOffRequested))
+                return;
             lockWakeAllowed = false;
-            if (IdleService.monitorsOff && SettingsData.lockScreenPowerOffMonitorsOnLock) {
+            resetPowerOffFade();
+            if (IdleService.monitorsOff && powerOffOnLock) {
                 IdleService.monitorsOff = false;
                 CompositorService.powerOnMonitors();
             }
+            IdleService.lockPowerOffRequested = false;
+            if (shouldLock && !lockRetryPending)
+                handleLockLost();
         }
     }
 
@@ -223,6 +366,10 @@ Scope {
 
         function lock() {
             root.lock();
+        }
+
+        function lockAndOutputsOff() {
+            root.lockAndOutputsOff();
         }
 
         function unlock() {
@@ -238,18 +385,63 @@ Scope {
         }
 
         function isLocked(): bool {
-            return sessionLock.locked;
+            return sessionLock.secure;
         }
 
         function status(): string {
             return JSON.stringify({
                 shouldLock: root.shouldLock,
                 sessionLockLocked: sessionLock.locked,
+                sessionLockSecure: sessionLock.secure,
+                lockRetryAttempts: root.lockRetryAttempts,
                 lockInitiatedLocally: root.lockInitiatedLocally,
                 pendingLock: root.pendingLock,
                 loginctlLocked: SessionService.locked,
                 loginctlActive: SessionService.active
             });
+        }
+    }
+
+    Timer {
+        id: powerOffFadeTimer
+        interval: SettingsData.fadeToDpmsGracePeriod * 1000
+        repeat: false
+        onTriggered: root.applyMonitorsOff()
+    }
+
+    IdleMonitor {
+        timeout: 1
+        respectInhibitors: false
+        enabled: powerOffFadeTimer.running
+        onIsIdleChanged: {
+            if (isIdle)
+                return;
+            if (!powerOffFadeTimer.running)
+                return;
+            root.cancelPowerOffFade();
+        }
+    }
+
+    Timer {
+        id: lockRetryTimer
+        interval: 1000
+        repeat: false
+        onTriggered: root.lockRetryPending = false
+    }
+
+    Timer {
+        id: resumeRelockTimer
+        interval: 1000
+        repeat: false
+        onTriggered: {
+            if (!root.shouldLock || sessionLock.locked)
+                return;
+            if (IdleService.monitorsOff || root.lockPowerOffArmed || IdleService.lockPowerOffRequested)
+                return;
+            root.log.warn("Session lock dead after resume - re-locking");
+            root.resetLockRetry();
+            root.lockRetryPending = true;
+            root.lockRetryPending = false;
         }
     }
 
@@ -265,9 +457,9 @@ Scope {
         interval: 200
         repeat: false
         onTriggered: {
-            if (!sessionLock.locked)
+            if (!sessionLock.secure)
                 return;
-            if (!SettingsData.lockScreenPowerOffMonitorsOnLock)
+            if (!powerOffOnLock)
                 return;
             if (!IdleService.monitorsOff) {
                 lockWakeAllowed = true;
@@ -284,7 +476,7 @@ Scope {
 
     MouseArea {
         anchors.fill: parent
-        enabled: sessionLock.locked
+        enabled: sessionLock.secure
         hoverEnabled: enabled
         onPressed: lockWakeDebounce.restart()
         onPositionChanged: lockWakeDebounce.restart()
@@ -293,10 +485,10 @@ Scope {
 
     FocusScope {
         anchors.fill: parent
-        focus: sessionLock.locked
+        focus: sessionLock.secure
 
         Keys.onPressed: event => {
-            if (!sessionLock.locked)
+            if (!sessionLock.secure)
                 return;
             lockWakeDebounce.restart();
         }

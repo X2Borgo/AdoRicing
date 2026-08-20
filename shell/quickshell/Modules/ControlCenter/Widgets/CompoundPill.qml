@@ -10,6 +10,7 @@ Rectangle {
 
     property string iconName: ""
     property color iconColor: Theme.surfaceText
+    property bool iconBlinking: false
     property string primaryText: ""
     property string secondaryText: ""
     property bool expanded: false
@@ -46,7 +47,7 @@ Rectangle {
         return Theme.ccTileInactiveBg;
     }
     readonly property color _tileRingActive: Theme.ccTileRing
-    readonly property color _tileRingInactive: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.18)
+    readonly property color _tileRingInactive: Theme.outlineHeavy
     readonly property color _tileIconActive: Theme.ccTileActiveText
     readonly property color _tileIconInactive: Theme.ccTileInactiveIcon
 
@@ -109,10 +110,16 @@ Rectangle {
             }
 
             DankIcon {
+                id: pillIcon
                 anchors.centerIn: parent
                 name: iconName
                 size: Theme.iconSize
                 color: isActive ? _tileIconActive : _tileIconInactive
+
+                DankBlink {
+                    target: pillIcon
+                    running: root.iconBlinking
+                }
             }
 
             DankRipple {
@@ -139,7 +146,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                spacing: Theme.spacingXXS
 
                 StyledText {
                     width: parent.width

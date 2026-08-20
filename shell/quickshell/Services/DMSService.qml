@@ -49,16 +49,17 @@ Singleton {
     signal capabilitiesReceived
     signal credentialsRequest(var data)
     signal bluetoothPairingRequest(var data)
-    signal dwlStateUpdate(var data)
     signal brightnessStateUpdate(var data)
     signal brightnessDeviceUpdate(var device)
     signal wlrOutputStateUpdate(var data)
     signal evdevStateUpdate(var data)
     signal gammaStateUpdate(var data)
     signal themeAutoStateUpdate(var data)
+    signal wallpaperCycleUpdate(var data)
     signal openUrlRequested(string url)
     signal appPickerRequested(var data)
     signal screensaverStateUpdate(var data)
+    signal freedesktopStateUpdate(var data)
     signal clipboardStateUpdate(var data)
     signal locationStateUpdate(var data)
     signal sysupdateStateUpdate(var data)
@@ -68,7 +69,7 @@ Singleton {
     property bool screensaverInhibited: false
     property var screensaverInhibitors: []
 
-    property var activeSubscriptions: ["network", "network.credentials", "loginctl", "freedesktop", "freedesktop.screensaver", "gamma", "theme.auto", "bluetooth", "bluetooth.pairing", "dwl", "brightness", "wlroutput", "evdev", "browser", "dbus", "clipboard", "location", "sysupdate"]
+    property var activeSubscriptions: ["network", "network.credentials", "loginctl", "freedesktop", "freedesktop.screensaver", "gamma", "theme.auto", "wallpaper", "bluetooth", "bluetooth.pairing", "brightness", "wlroutput", "evdev", "browser", "dbus", "clipboard", "sysupdate"]
 
     Component.onCompleted: {
         if (socketPath && socketPath.length > 0) {
@@ -245,13 +246,14 @@ Singleton {
 
     function sendSubscribeRequest() {
         const request = {
-            "method": "subscribe"
+            "method": "subscribe",
+            "params": {
+                "clientId": dbusClientId
+            }
         };
 
         if (activeSubscriptions.length > 0) {
-            request.params = {
-                "services": activeSubscriptions
-            };
+            request.params.services = activeSubscriptions;
             log.debug("Subscribing to services:", JSON.stringify(activeSubscriptions));
         } else {
             log.debug("Subscribing to all services");
@@ -286,7 +288,7 @@ Singleton {
 
     function removeSubscription(service) {
         if (activeSubscriptions.includes("all")) {
-            const allServices = ["network", "loginctl", "freedesktop", "gamma", "bluetooth", "dwl", "brightness", "browser", "location"];
+            const allServices = ["network", "loginctl", "freedesktop", "gamma", "bluetooth", "brightness", "browser", "location"];
             const filtered = allServices.filter(s => s !== service);
             subscribe(filtered);
         } else {
@@ -308,7 +310,7 @@ Singleton {
             excludeServices = [excludeServices];
         }
 
-        const allServices = ["network", "loginctl", "freedesktop", "gamma", "theme.auto", "bluetooth", "cups", "dwl", "brightness", "browser", "dbus", "location"];
+        const allServices = ["network", "loginctl", "freedesktop", "gamma", "theme.auto", "bluetooth", "cups", "brightness", "browser", "dbus", "location"];
         const filtered = allServices.filter(s => !excludeServices.includes(s));
         subscribe(filtered);
     }
@@ -333,6 +335,7 @@ Singleton {
         const data = response.result.data;
 
         if (service === "server") {
+            const prevCapabilities = capabilities;
             apiVersion = data.apiVersion || 0;
             cliVersion = data.cliVersion || "";
             capabilities = data.capabilities || [];
@@ -344,6 +347,12 @@ Singleton {
             }
 
             capabilitiesReceived();
+
+            const capabilitiesChanged = prevCapabilities.length !== capabilities.length || capabilities.some(c => !prevCapabilities.includes(c));
+            if (prevCapabilities.length > 0 && capabilitiesChanged) {
+                log.info("Capabilities changed, resubscribing");
+                subscribe(activeSubscriptions);
+            }
         } else if (service === "network") {
             networkStateUpdate(data);
         } else if (service === "network.credentials") {
@@ -354,8 +363,6 @@ Singleton {
             bluetoothPairingRequest(data);
         } else if (service === "cups") {
             cupsStateUpdate(data);
-        } else if (service === "dwl") {
-            dwlStateUpdate(data);
         } else if (service === "brightness") {
             brightnessStateUpdate(data);
         } else if (service === "brightness.update") {
@@ -373,6 +380,8 @@ Singleton {
             gammaStateUpdate(data);
         } else if (service === "theme.auto") {
             themeAutoStateUpdate(data);
+        } else if (service === "wallpaper") {
+            wallpaperCycleUpdate(data);
         } else if (service === "browser.open_requested") {
             if (data.target) {
                 if (data.requestType === "url" || !data.requestType) {
@@ -387,6 +396,8 @@ Singleton {
             screensaverInhibited = data.inhibited || false;
             screensaverInhibitors = data.inhibitors || [];
             screensaverStateUpdate(data);
+        } else if (service === "freedesktop") {
+            freedesktopStateUpdate(data);
         } else if (service === "dbus") {
             dbusSignalReceived(data.subscriptionId || "", data);
         } else if (service === "clipboard") {
@@ -617,6 +628,12 @@ Singleton {
         sendRequest("loginctl.unlock", null, callback);
     }
 
+    function setLockedHint(locked, callback) {
+        sendRequest("loginctl.setLockedHint", {
+            "locked": locked
+        }, callback);
+    }
+
     function bluetoothPair(devicePath, callback) {
         sendRequest("bluetooth.pair", {
             "device": devicePath
@@ -663,6 +680,7 @@ Singleton {
 
     signal dbusSignalReceived(string subscriptionId, var data)
 
+    readonly property string dbusClientId: "dms-qml-" + Date.now() + "-" + Math.floor(Math.random() * 0xffffffff)
     property var dbusSubscriptions: ({})
 
     function dbusCall(bus, dest, path, iface, method, args, callback) {
@@ -726,7 +744,8 @@ Singleton {
             "sender": sender || "",
             "path": path || "",
             "interface": iface || "",
-            "member": member || ""
+            "member": member || "",
+            "clientId": dbusClientId
         }, response => {
             if (!response.error && response.result?.subscriptionId) {
                 dbusSubscriptions[response.result.subscriptionId] = true;

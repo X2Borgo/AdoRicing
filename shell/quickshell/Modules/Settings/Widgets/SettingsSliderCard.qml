@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import qs.Common
+import qs.Services
 import qs.Widgets
 
 StyledRect {
@@ -12,6 +13,7 @@ StyledRect {
 
     property string tab: ""
     property var tags: []
+    property string settingKey: ""
 
     property string title: ""
     property string description: ""
@@ -24,10 +26,43 @@ StyledRect {
 
     signal sliderValueChanged(int newValue)
     signal sliderDragFinished(int finalValue)
+
+    DankTooltipV2 {
+        id: sharedTooltip
+    }
+
     width: parent?.width ?? 0
     height: Theme.spacingL * 2 + contentColumn.height
     radius: Theme.cornerRadius
     color: Theme.surfaceContainerHigh
+
+    function findParentFlickable() {
+        let p = root.parent;
+        while (p) {
+            if (p.hasOwnProperty("contentY") && p.hasOwnProperty("contentItem"))
+                return p;
+            p = p.parent;
+        }
+        return null;
+    }
+
+    Component.onCompleted: {
+        if (!settingKey)
+            return;
+        const key = settingKey;
+        Qt.callLater(() => {
+            if (!root.parent)
+                return;
+            const flickable = findParentFlickable();
+            if (flickable)
+                SettingsSearchService.registerCard(key, root, flickable);
+        });
+    }
+
+    Component.onDestruction: {
+        if (settingKey)
+            SettingsSearchService.unregisterCard(settingKey);
+    }
 
     Column {
         id: contentColumn
@@ -90,6 +125,12 @@ StyledRect {
                     slider.value = root.defaultValue;
                     root.sliderValueChanged(root.defaultValue);
                     root.sliderDragFinished(root.defaultValue);
+                }
+                onEntered: {
+                    sharedTooltip.show(I18n.tr("Reset"), resetButton, 0, 0, "bottom");
+                }
+                onExited: {
+                    sharedTooltip.hide();
                 }
             }
         }

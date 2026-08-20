@@ -51,12 +51,44 @@ dms greeter enable
 dms greeter sync
 ```
 
+Fingerprint authentication is optional. Install your distribution's
+fingerprint service/client and PAM integration before enabling it. Package
+names vary by distribution; on Fedora the native stack is:
+
+```bash
+sudo dnf install fprintd fprintd-pam
+fprintd-enroll
+```
+
+The distro `fprintd` package normally pulls in `libfprint` automatically. After
+enrollment, enable fingerprint login in **Settings → Greeter**. The toggle
+applies the shared PAM configuration automatically, so no additional sync is
+needed after initial greeter setup. Use `dms auth sync` only to repair or apply
+authentication manually without syncing the rest of the greeter.
+
+greetd tries fingerprint and password sequentially. DMS-managed PAM allows two
+scans for up to ten seconds before password fallback. Existing distro PAM
+policy takes precedence, so fallback timing can differ.
+
+Verify enrollment with `fprintd-list "$USER"`; pass a token such as
+`fprintd-enroll -f right-thumb` to enroll a specific finger. Security keys
+similarly require `pam_u2f` setup and key registration before enabling the
+login toggle.
+
+If `fprintd-enroll` reports **No devices available**, check the [libfprint
+supported devices list](https://fprint.freedesktop.org/supported-devices.html).
+Some Validity/Synaptics readers are not supported by the native stack,
+regardless of distribution; the
+[open-fprintd](https://github.com/uunicorn/open-fprintd) service with the
+[python-validity](https://github.com/uunicorn/python-validity) driver may work
+instead. Follow the driver's installation and firmware instructions, and do
+not run the stock `fprintd` daemon alongside its replacement.
+
 #### Syncing themes (Optional)
 
 To sync your wallpaper and theme with the greeter login screen, follow the manual setup below:
 
-<details>
-<summary>Manual theme syncing</summary>
+##### Manual theme syncing
 
 ```bash
 # Add yourself to greeter group
@@ -97,7 +129,8 @@ sudo rpm -ivh x86_64/dms-greeter-*.rpm
 ```
 
 The package automatically:
-- Creates the greeter user
+
+- Creates the greeter user (via `systemd-sysusers` from `/usr/lib/sysusers.d/dms-greeter.conf` for atomic/immutable compatibility, with package script fallback)
 - Sets up directories and permissions
 - Configures greetd with auto-detected compositor
 - Applies SELinux contexts
@@ -249,7 +282,17 @@ Only niri currently has a generated greeter config path managed by `dms greeter 
 
 The greeter can be personalized with wallpapers, themes, weather, clock formats, and more - configured exactly the same as dms.
 
-**Easiest method:** Run `dms greeter sync` to automatically sync your DMS theme with the greeter.
+**Easiest method (single user):** Run `dms greeter sync` to automatically sync your DMS theme with the greeter.
+
+**Multi-user systems:** One **main admin** runs full sync once to set up greetd and the shared cache (`dms greeter sync`, or `dms greeter sync --local` when developing from a checkout). **Every other account**—including other admins—should only run:
+
+```bash
+dms greeter sync --profile
+```
+
+Before that, an administrator must add each user to the `greeter` group in **Settings → Users** (greeter toggle) or with `sudo usermod -aG greeter <username>`. Each added user must log out and back in before `--profile` will work.
+
+Per-user settings are stored under `/var/cache/dms-greeter/users/<username>/` for the login picker; the root cache remains the default fallback and is owned by whoever ran full sync.
 
 **Manual method:** You can manually synchronize configurations if you want greeter settings to always mirror your shell:
 

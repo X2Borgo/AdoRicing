@@ -335,32 +335,9 @@ FloatingWindow {
                     anchors.fill: parent
                     visible: root.isLoading
 
-                    Column {
+                    DankSpinner {
                         anchors.centerIn: parent
-                        spacing: Theme.spacingM
-
-                        DankIcon {
-                            name: "sync"
-                            size: 48
-                            color: Theme.primary
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            smoothTransform: root.isLoading
-
-                            RotationAnimator on rotation {
-                                from: 0
-                                to: 360
-                                duration: 1000
-                                loops: Animation.Infinite
-                                running: root.isLoading
-                            }
-                        }
-
-                        StyledText {
-                            text: I18n.tr("Loading...", "loading indicator")
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.surfaceVariantText
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
+                        running: root.isLoading
                     }
                 }
 
@@ -410,8 +387,8 @@ FloatingWindow {
                             return baseDir + "/preview-" + mode + ".svg";
                         }
                         property bool hasPreview: previewImage.status === Image.Ready
-                        color: isSelected ? Theme.primarySelected : Qt.rgba(Theme.surfaceVariant.r, Theme.surfaceVariant.g, Theme.surfaceVariant.b, 0.3)
-                        border.color: isSelected ? Theme.primary : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.2)
+                        color: isSelected ? Theme.primarySelected : Theme.withAlpha(Theme.surfaceVariant, 0.3)
+                        border.color: isSelected ? Theme.primary : Theme.outlineHeavy
                         border.width: isSelected ? 2 : 1
 
                         Row {
@@ -448,7 +425,7 @@ FloatingWindow {
 
                             Column {
                                 width: parent.width - (hasPreview ? 180 : 48) - Theme.spacingM - installButton.width - Theme.spacingM
-                                spacing: 6
+                                spacing: Theme.spacingXS
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 Row {
@@ -468,7 +445,7 @@ FloatingWindow {
                                         height: 18
                                         width: versionText.implicitWidth + Theme.spacingS
                                         radius: 9
-                                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.15)
+                                        color: Theme.outlineStrong
                                         anchors.verticalCenter: parent.verticalCenter
 
                                         StyledText {
@@ -484,8 +461,8 @@ FloatingWindow {
                                         height: 18
                                         width: firstPartyText.implicitWidth + Theme.spacingS
                                         radius: 9
-                                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
-                                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.4)
+                                        color: Theme.primaryPressed
+                                        border.color: Theme.withAlpha(Theme.primary, 0.4)
                                         border.width: 1
                                         visible: isFirstParty
                                         anchors.verticalCenter: parent.verticalCenter
@@ -504,8 +481,8 @@ FloatingWindow {
                                         height: 18
                                         width: variantsText.implicitWidth + Theme.spacingS
                                         radius: 9
-                                        color: Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.15)
-                                        border.color: Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.4)
+                                        color: Theme.withAlpha(Theme.secondary, 0.15)
+                                        border.color: Theme.withAlpha(Theme.secondary, 0.4)
                                         border.width: 1
                                         visible: themeDelegate.hasVariants
                                         anchors.verticalCenter: parent.verticalCenter
@@ -618,7 +595,7 @@ FloatingWindow {
                                 color: isInstalled ? (uninstallMouseArea.containsMouse ? Theme.error : Theme.surfaceVariant) : Theme.primary
                                 opacity: installMouseArea.containsMouse || uninstallMouseArea.containsMouse ? 0.9 : 1
                                 border.width: isInstalled ? 1 : 0
-                                border.color: isInstalled ? (uninstallMouseArea.containsMouse ? Theme.error : Theme.outline) : "transparent"
+                                border.color: isInstalled ? (uninstallMouseArea.containsMouse ? Theme.error : Theme.outline) : Theme.withAlpha(Theme.outline, 0)
 
                                 Behavior on opacity {
                                     NumberAnimation {

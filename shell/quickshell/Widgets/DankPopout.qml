@@ -23,7 +23,11 @@ Item {
     property list<real> animationExitCurve: Theme.variantPopoutExitCurve
     property bool suspendShadowWhileResizing: false
     property bool shouldBeVisible: false
+    property bool hoverDismissEnabled: false
+    property bool hoverDismissSuspended: false
     property var customKeyboardFocus: null
+    readonly property alias transientSurfaceTracker: _transientSurfaceTracker
+    readonly property bool effectiveHoverDismissSuspended: hoverDismissSuspended || (transientSurfaceTracker?.active ?? false)
     property bool backgroundInteractive: true
     property bool contentHandlesKeys: false
     property bool fullHeightSurface: false
@@ -32,6 +36,7 @@ Item {
     property real storedBarThickness: Theme.barHeight - 4
     property real storedBarSpacing: 4
     property var storedBarConfig: null
+    property bool triggerUsesOverlayLayer: false
     property var adjacentBarInfo: ({
             "topBar": 0,
             "bottomBar": 0,
@@ -49,6 +54,25 @@ Item {
     readonly property var contentLoader: impl.item ? impl.item.contentLoader : _fallbackContentLoader
     readonly property var overlayLoader: impl.item ? impl.item.overlayLoader : _fallbackOverlayLoader
     readonly property var backgroundWindow: impl.item ? impl.item.backgroundWindow : null
+    readonly property var contentWindow: impl.item ? impl.item.contentWindow : null
+
+    TransientSurfaceTracker {
+        id: _transientSurfaceTracker
+    }
+
+    // Hyprland OnDemand grab: whitelist popout surfaces and bars so dismiss clicks still land.
+    DankFocusGrab {
+        windows: {
+            const list = [];
+            if (root.contentWindow)
+                list.push(root.contentWindow);
+            if (root.backgroundWindow && root.backgroundWindow !== root.contentWindow)
+                list.push(root.backgroundWindow);
+            const transientWindows = root.transientSurfaceTracker?.focusWindows ?? [];
+            return list.concat(transientWindows).concat(KeyboardFocus.barWindows);
+        }
+        wanted: KeyboardFocus.wantsGrab(root.shouldBeVisible, root.customKeyboardFocus)
+    }
 
     Loader {
         id: _fallbackContentLoader
@@ -66,6 +90,8 @@ Item {
     readonly property real alignedY: impl.item ? impl.item.alignedY : 0
     readonly property real alignedWidth: impl.item ? impl.item.alignedWidth : 0
     readonly property real alignedHeight: impl.item ? impl.item.alignedHeight : 0
+    readonly property real renderedAlignedY: impl.item ? (impl.item.renderedAlignedY ?? impl.item.alignedY) : 0
+    readonly property real renderedAlignedHeight: impl.item ? (impl.item.renderedAlignedHeight ?? impl.item.alignedHeight) : 0
     readonly property real maskX: impl.item ? impl.item.maskX : 0
     readonly property real maskY: impl.item ? impl.item.maskY : 0
     readonly property real maskWidth: impl.item ? impl.item.maskWidth : 0
@@ -97,21 +123,30 @@ Item {
         function onConnectedFrameModeActiveChanged() {
             root._maybeResolveBackend();
         }
+        function onFrameEnabledChanged() {
+            root._maybeResolveBackend();
+        }
         function onFrameScreenPreferencesChanged() {
+            root._maybeResolveBackend();
+        }
+        function onShowDockChanged() {
+            root._maybeResolveBackend();
+        }
+        function onBarConfigsChanged() {
             root._maybeResolveBackend();
         }
     }
 
+    // Backend re-resolution on toplevel activity is covered by CompositorService.frameBlockedByScreen.
+
     function _usesConnectedBackendForScreen(targetScreen) {
-        return SettingsData.connectedFrameModeActive && !!targetScreen && SettingsData.isScreenInPreferences(targetScreen, SettingsData.frameScreenPreferences);
+        return CompositorService.usesConnectedFrameChromeForScreen(targetScreen);
     }
 
     function _backendForScreen(targetScreen) {
         return _usesConnectedBackendForScreen(targetScreen) ? connectedComp : standaloneComp;
     }
 
-    // Defer Loader source-component swap until impl is fully closed; avoids
-    // tearing down a popout mid-animation when frame mode is toggled.
     function _maybeResolveBackend() {
         _resolveBackendForScreen(screen);
     }
@@ -138,8 +173,47 @@ Item {
     function close() {
         _pendingOpen = false;
         _pendingOpenTimer.stop();
+        transientSurfaceTracker?.closeAll?.();
+        if (impl.item) {
+            impl.item.close();
+            return;
+        }
+        PopoutManager.hidePopout(root);
+        if (!shouldBeVisible)
+            return;
+        shouldBeVisible = false;
+        popoutClosed();
+    }
+
+    function cancelHoverDismiss() {
+        if (impl.item?.cancelHoverDismiss)
+            impl.item.cancelHoverDismiss();
+    }
+
+    // Fade out in place during morph switch transitions.
+    function beginSupersededClose() {
+        if (impl.item?.beginSupersededClose)
+            impl.item.beginSupersededClose();
+    }
+
+    function closeFromHoverDismiss() {
+        if (effectiveHoverDismissSuspended)
+            return;
+        transientSurfaceTracker?.closeAll?.();
+        hoverDismissEnabled = false;
+        // Enable animations using standard Theme-bound popout motion to preserve bindings.
+        if (impl.item)
+            impl.item.animationsEnabled = true;
+        for (const prop of ["dashVisible", "notificationHistoryVisible"]) {
+            if (root[prop] !== undefined) {
+                root[prop] = false;
+                return;
+            }
+        }
         if (impl.item)
             impl.item.close();
+        else
+            close();
     }
 
     function toggle() {
@@ -149,6 +223,10 @@ Item {
     function setBarContext(position, bottomGap) {
         effectiveBarPosition = position !== undefined ? position : 0;
         effectiveBarBottomGap = bottomGap !== undefined ? bottomGap : 0;
+    }
+
+    function _triggerBarUsesOverlayLayer(targetScreen, barConfig) {
+        return LayerShell.envUsesOverlay("DMS_DANKBAR_LAYER", (barConfig?.useOverlayLayer ?? false) || CompositorService.framePeerSurfacesUseOverlayForScreen(targetScreen));
     }
 
     function setTriggerPosition(x, y, width, section, targetScreen, barPosition, barThickness, barSpacing, barConfig) {
@@ -161,6 +239,7 @@ Item {
         storedBarThickness = barThickness !== undefined ? barThickness : (Theme.barHeight - 4);
         storedBarSpacing = barSpacing !== undefined ? barSpacing : 4;
         storedBarConfig = barConfig;
+        triggerUsesOverlayLayer = _triggerBarUsesOverlayLayer(targetScreen, barConfig);
 
         const pos = barPosition !== undefined ? barPosition : 0;
         const bottomGap = barConfig ? (barConfig.bottomGap !== undefined ? barConfig.bottomGap : 0) : 0;
@@ -173,6 +252,20 @@ Item {
     function updateSurfacePosition() {
         if (impl.item && typeof impl.item.updateSurfacePosition === "function")
             impl.item.updateSurfacePosition();
+    }
+
+    function containsGlobalPoint(gx, gy) {
+        if (!screen)
+            return false;
+        const presented = shouldBeVisible || (impl.item?.isClosing ?? false);
+        if (!presented)
+            return false;
+        const padding = 24;
+        const x = alignedX - padding;
+        const y = renderedAlignedY - padding;
+        const w = alignedWidth + padding * 2;
+        const h = renderedAlignedHeight + padding * 2;
+        return gx >= x && gx <= x + w && gy >= y && gy <= y + h;
     }
 
     Loader {
@@ -221,12 +314,16 @@ Item {
         it.storedBarThickness = Qt.binding(() => root.storedBarThickness);
         it.storedBarSpacing = Qt.binding(() => root.storedBarSpacing);
         it.storedBarConfig = Qt.binding(() => root.storedBarConfig);
+        it.triggerUsesOverlayLayer = Qt.binding(() => root.triggerUsesOverlayLayer);
         it.adjacentBarInfo = Qt.binding(() => root.adjacentBarInfo);
         it.screen = Qt.binding(() => root.screen);
         it.effectiveBarPosition = Qt.binding(() => root.effectiveBarPosition);
         it.effectiveBarBottomGap = Qt.binding(() => root.effectiveBarBottomGap);
+        it.hoverDismissEnabled = Qt.binding(() => root.hoverDismissEnabled);
+        it.hoverDismissSuspended = Qt.binding(() => root.effectiveHoverDismissSuspended);
 
-        it.shouldBeVisible = root.shouldBeVisible;
+        if (root.shouldBeVisible && !_pendingOpen)
+            root.shouldBeVisible = false;
         if (root._primeContent && typeof it.primeContent === "function")
             it.primeContent();
         if (_pendingOpen)
@@ -248,6 +345,8 @@ Item {
     Connections {
         target: root
         function onShouldBeVisibleChanged() {
+            if (!root.shouldBeVisible)
+                root.transientSurfaceTracker?.closeAll?.();
             if (impl.item && impl.item.shouldBeVisible !== root.shouldBeVisible)
                 impl.item.shouldBeVisible = root.shouldBeVisible;
         }

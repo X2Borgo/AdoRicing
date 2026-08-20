@@ -18,17 +18,57 @@ Singleton {
     readonly property string layoutPath: hyprDmsDir + "/layout.lua"
     readonly property string cursorPath: hyprDmsDir + "/cursor.lua"
     readonly property string windowrulesPath: hyprDmsDir + "/windowrules.lua"
+    readonly property bool luaConfigActive: CompositorService.isHyprland && (Hyprland.usingLua === true || luaConfigDetected)
 
     property int _lastGapValue: -1
+    property bool luaConfigDetected: false
+    property bool luaConfigStatusReady: false
+    property bool luaConfigStatusLoading: false
+    property string luaConfigFormat: ""
+    property bool layoutGenerationPending: false
+    property bool layoutGenerationRunning: false
+    property int _layoutRequestRevision: 0
+    property int _layoutAppliedRevision: 0
+    property int _frameTransitionRevision: 0
+    readonly property bool frameLayoutReady: _layoutAppliedRevision >= _frameTransitionRevision
+
+    // dms/layout.lua is the source of truth for xray; parsed once before the first regeneration
+    property bool layoutXrayEnabled: false
+    property bool layoutBarXrayEnabled: true
+    property bool _layoutXrayLoaded: false
+    property bool _layoutXrayLoading: false
+
+    DeferredAction {
+        id: layoutGenerationAction
+        onTriggered: root.doGenerateLayoutConfig()
+    }
+
+    onLuaConfigStatusLoadingChanged: {
+        if (!luaConfigStatusLoading && layoutGenerationPending)
+            layoutGenerationAction.schedule();
+    }
+
+    onLuaConfigActiveChanged: {
+        if (luaConfigActive)
+            ensureDmsLuaConfigs();
+    }
 
     Component.onCompleted: {
         if (CompositorService.isHyprland) {
-            Qt.callLater(generateLayoutConfig);
-            ensureWindowrulesConfig();
+            refreshLuaConfigStatus();
+            if (luaConfigActive)
+                ensureDmsLuaConfigs();
         }
     }
 
+    function ensureDmsLuaConfigs() {
+        Qt.callLater(generateLayoutConfig);
+        Qt.callLater(ensureWindowrulesConfig);
+    }
+
     function ensureWindowrulesConfig() {
+        if (!canWriteLuaConfig("windowrules"))
+            return;
         Proc.runCommand("hypr-ensure-windowrules", ["sh", "-c", `mkdir -p "${hyprDmsDir}" && [ ! -f "${windowrulesPath}" ] && touch "${windowrulesPath}" || true`], (output, exitCode) => {
             if (exitCode !== 0)
                 log.warn("Failed to ensure windowrules.lua:", output);
@@ -51,19 +91,73 @@ Singleton {
     Connections {
         target: CompositorService
         function onIsHyprlandChanged() {
-            if (CompositorService.isHyprland)
-                generateLayoutConfig();
+            if (CompositorService.isHyprland) {
+                refreshLuaConfigStatus();
+                if (luaConfigActive)
+                    ensureDmsLuaConfigs();
+                return;
+            }
+            luaConfigDetected = false;
+            luaConfigStatusReady = false;
+            luaConfigStatusLoading = false;
+            luaConfigFormat = "";
         }
     }
 
     function getOutputIdentifier(output, outputName) {
+        if (output.explicitIdentifier)
+            return outputName;
         if (SettingsData.displayNameMode === "model" && output.make && output.model)
-            return "desc:" + output.make + " " + output.model + " " + (output.serial || "Unknown");
+            return ("desc:" + [output.make, output.model, output.serial].filter(p => p).join(" ")).replace(/,/g, "");
         return outputName;
     }
 
     function luaQuoted(str) {
         return JSON.stringify(String(str ?? ""));
+    }
+
+    function refreshLuaConfigStatus() {
+        if (!CompositorService.isHyprland) {
+            luaConfigDetected = false;
+            luaConfigStatusReady = false;
+            luaConfigStatusLoading = false;
+            luaConfigFormat = "";
+            return;
+        }
+        if (luaConfigStatusLoading)
+            return;
+
+        luaConfigStatusLoading = true;
+        Proc.runCommand("hypr-lua-config-status", [Proc.dmsBin, "config", "resolve-include", "hyprland", "outputs.lua"], (output, exitCode) => {
+            luaConfigStatusLoading = false;
+            luaConfigStatusReady = true;
+            if (exitCode !== 0) {
+                luaConfigDetected = false;
+                luaConfigFormat = "";
+                return;
+            }
+            try {
+                const status = JSON.parse(output.trim());
+                luaConfigFormat = status.configFormat ?? "";
+                luaConfigDetected = luaConfigFormat === "lua" && status.readOnly !== true;
+            } catch (e) {
+                luaConfigDetected = false;
+                luaConfigFormat = "";
+            }
+        });
+    }
+
+    function canWriteLuaConfig(name) {
+        if (luaConfigActive)
+            return true;
+        if (CompositorService.isHyprland && !luaConfigStatusReady && !luaConfigStatusLoading)
+            refreshLuaConfigStatus();
+        if (CompositorService.isHyprland && (luaConfigStatusLoading || !luaConfigStatusReady)) {
+            log.debug("Deferring Hyprland", name || "config", "Lua write until config format is known");
+            return false;
+        }
+        log.info("Skipping Hyprland", name || "config", "Lua write because the active Hyprland config is not Lua");
+        return false;
     }
 
     function forceFlagValue(value) {
@@ -75,6 +169,11 @@ Singleton {
     }
 
     function generateOutputsConfig(outputsData, hyprlandSettings, callback) {
+        if (!canWriteLuaConfig("outputs")) {
+            if (callback)
+                callback(false);
+            return;
+        }
         if (!outputsData || Object.keys(outputsData).length === 0) {
             if (callback)
                 callback(false);
@@ -97,8 +196,8 @@ Singleton {
                 continue;
             }
 
-            let resolution = "preferred";
-            if (output.modes && output.current_mode !== undefined) {
+            let resolution = output.configured_mode || "preferred";
+            if (!output.configured_mode && output.modes && output.current_mode !== undefined) {
                 const mode = output.modes[output.current_mode];
                 if (mode)
                     resolution = mode.width + "x" + mode.height + "@" + (mode.refresh_rate / 1000).toFixed(3);
@@ -162,32 +261,102 @@ Singleton {
         });
     }
 
-    function reloadConfig() {
+    function reloadConfig(callback) {
         Proc.runCommand("hyprctl-reload", ["hyprctl", "reload"], (output, exitCode) => {
             if (exitCode !== 0)
                 log.warn("hyprctl reload failed:", output);
+            if (callback)
+                callback(exitCode === 0);
         });
     }
 
-    function generateLayoutConfig() {
+    function setLayoutXray(enabled) {
+        layoutXrayEnabled = enabled;
+        _layoutXrayLoaded = true;
+        generateLayoutConfig();
+    }
+
+    function setLayoutBarXray(enabled) {
+        layoutBarXrayEnabled = enabled;
+        _layoutXrayLoaded = true;
+        generateLayoutConfig();
+    }
+
+    function loadLayoutXrayState() {
+        if (_layoutXrayLoading)
+            return;
+        _layoutXrayLoading = true;
+        const configDir = Paths.strip(StandardPaths.writableLocation(StandardPaths.ConfigLocation));
+        Proc.runCommand("hypr-read-layout-xray", ["cat", configDir + "/hypr/dms/layout.lua"], (output, exitCode) => {
+            _layoutXrayLoading = false;
+            if (!_layoutXrayLoaded) {
+                const content = exitCode === 0 ? output : "";
+                layoutXrayEnabled = content.includes('"^dms:.*$"');
+                layoutBarXrayEnabled = !content.includes("-- bar-xray off");
+                _layoutXrayLoaded = true;
+            }
+            if (layoutGenerationPending)
+                layoutGenerationAction.schedule();
+        });
+    }
+
+    function generateLayoutConfig(frameTransition) {
         if (!CompositorService.isHyprland)
             return;
+        _layoutRequestRevision++;
+        if (frameTransition === true)
+            _frameTransitionRevision = _layoutRequestRevision;
+        layoutGenerationPending = true;
+        layoutGenerationAction.schedule();
+    }
+
+    function doGenerateLayoutConfig() {
+        if (layoutGenerationRunning)
+            return;
+        if (!_layoutXrayLoaded) {
+            loadLayoutXrayState();
+            return;
+        }
+        layoutGenerationPending = false;
+        const requestRevision = _layoutRequestRevision;
+        if (!canWriteLuaConfig("layout")) {
+            if (luaConfigStatusLoading || !luaConfigStatusReady) {
+                layoutGenerationPending = true;
+                return;
+            }
+            _layoutAppliedRevision = Math.max(_layoutAppliedRevision, requestRevision);
+            return;
+        }
+        layoutGenerationRunning = true;
 
         const defaultRadius = typeof SettingsData !== "undefined" ? SettingsData.cornerRadius : 12;
         const defaultGaps = typeof SettingsData !== "undefined" ? Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4)) : 4;
         const defaultBorderSize = 2;
 
         const cornerRadius = (typeof SettingsData !== "undefined" && SettingsData.hyprlandLayoutRadiusOverride >= 0) ? SettingsData.hyprlandLayoutRadiusOverride : defaultRadius;
-        const gaps = (typeof SettingsData !== "undefined" && SettingsData.hyprlandLayoutGapsOverride >= 0) ? SettingsData.hyprlandLayoutGapsOverride : defaultGaps;
+        const gapsOverride = typeof SettingsData !== "undefined" ? SettingsData.hyprlandLayoutGapsOverride : -1;
+        const manageGaps = gapsOverride !== -2;
+        const gapsIn = gapsOverride >= 0 ? gapsOverride : defaultGaps;
+        const gapsOut = (gapsOverride >= 0 && SettingsData.hyprlandLayoutGapsOutOverride >= 0) ? SettingsData.hyprlandLayoutGapsOutOverride : gapsIn;
         const borderSize = (typeof SettingsData !== "undefined" && SettingsData.hyprlandLayoutBorderSize >= 0) ? SettingsData.hyprlandLayoutBorderSize : defaultBorderSize;
+        const resizeOnBorder = (typeof SettingsData !== "undefined" && SettingsData.hyprlandResizeOnBorder) ? true : false;
+        const frameEnabled = typeof SettingsData !== "undefined" && SettingsData.frameEnabled;
+        // Hyprland `xray = false` is still early-development; unset already samples real content, so only force xray=true
+        // dms:frame only in separate mode — connected-mode frame blur overlaps windows via popouts/arcs
+        const xrayNamespaces = ["dms:bar"];
+        if (frameEnabled && SettingsData.frameMode !== "connected")
+            xrayNamespaces.push("dms:frame");
+
+        const generalLines = [];
+        if (manageGaps)
+            generalLines.push(`gaps_in = ${gapsIn},`, `gaps_out = ${gapsOut},`);
+        generalLines.push(`border_size = ${borderSize},`, `resize_on_border = ${resizeOnBorder},`);
 
         let content = `-- Auto-generated by DMS — do not edit manually
 
 hl.config({
 	general = {
-		gaps_in = ${gaps},
-		gaps_out = ${gaps},
-		border_size = ${borderSize},
+${generalLines.map(l => "\t\t" + l).join("\n")}
 	},
 	decoration = {
 		rounding = ${cornerRadius},
@@ -195,13 +364,49 @@ hl.config({
 })
 `;
 
+        if (layoutXrayEnabled) {
+            content += `
+hl.layer_rule({
+	match = { namespace = "^dms:.*$" },
+	xray = true,
+})
+`;
+        }
+        if (layoutBarXrayEnabled) {
+            for (const ns of xrayNamespaces) {
+                content += `
+hl.layer_rule({
+	match = { namespace = "^${ns}$" },
+	xray = true,
+})
+`;
+            }
+        }
+        // Marker persists the preference even while the rule has no target
+        if (!layoutBarXrayEnabled) {
+            content += `
+-- bar-xray off
+`;
+        }
+
         Proc.runCommand("hypr-write-layout", ["sh", "-c", `mkdir -p "${hyprDmsDir}" && cat > "${layoutPath}" << 'EOF'\n${content}EOF`], (output, exitCode) => {
             if (exitCode !== 0) {
                 log.warn("Failed to write layout config:", output);
+                // Best-effort ack so a failed write can't wedge frame transitions
+                _layoutAppliedRevision = Math.max(_layoutAppliedRevision, requestRevision);
+                layoutGenerationRunning = false;
+                if (layoutGenerationPending)
+                    layoutGenerationAction.schedule();
                 return;
             }
             log.info("Generated layout config at", layoutPath);
-            reloadConfig();
+            reloadConfig(success => {
+                // Advance even on failure — proceed degraded rather than wedge the transition
+                _layoutAppliedRevision = Math.max(_layoutAppliedRevision, requestRevision);
+                layoutGenerationRunning = false;
+                if (layoutGenerationPending)
+                    layoutGenerationAction.schedule();
+            });
         });
     }
 
@@ -253,6 +458,8 @@ hl.config({
 
     function generateCursorConfig() {
         if (!CompositorService.isHyprland)
+            return;
+        if (!canWriteLuaConfig("cursor"))
             return;
 
         const settings = typeof SettingsData !== "undefined" ? SettingsData.cursorSettings : null;
@@ -326,7 +533,7 @@ hl.config({
         if (!wsId)
             return;
         const fullName = wsId + " " + newName;
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.workspace.rename({ workspace = ${luaValue(wsId)}, name = ${luaString(fullName)} })`);
         } else {
             Hyprland.dispatch(`renameworkspace ${wsId} ${fullName}`);
@@ -334,7 +541,7 @@ hl.config({
     }
 
     function focusWorkspace(workspace) {
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.focus({ workspace = ${luaValue(workspace)} })`);
         } else {
             Hyprland.dispatch(`workspace ${workspace}`);
@@ -366,7 +573,7 @@ hl.config({
         if (!selector)
             return;
 
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.focus({ window = ${luaString(selector)} })`);
         } else {
             Hyprland.dispatch(`focuswindow ${selector}`);
@@ -378,7 +585,7 @@ hl.config({
         if (!selector)
             return;
 
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.window.close(${luaString(selector)})`);
         } else {
             Hyprland.dispatch(`closewindow ${selector}`);
@@ -390,7 +597,7 @@ hl.config({
         if (!selector)
             return;
 
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.window.move({ workspace = ${luaValue(workspace)}, window = ${luaString(selector)}, follow = ${follow ? "true" : "false"} })`);
         } else {
             const dispatcher = follow ? "movetoworkspace" : "movetoworkspacesilent";
@@ -399,7 +606,7 @@ hl.config({
     }
 
     function toggleSpecial(specialName) {
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.workspace.toggle_special(${luaString(specialName)})`);
         } else {
             Hyprland.dispatch("togglespecialworkspace " + specialName);
@@ -407,7 +614,7 @@ hl.config({
     }
 
     function exit() {
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch("hl.dsp.exit()");
         } else {
             Hyprland.dispatch("exit");
@@ -415,7 +622,7 @@ hl.config({
     }
 
     function dpmsOff() {
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.dpms({ action = "disable" })`);
         } else {
             Hyprland.dispatch("dpms off");
@@ -423,7 +630,7 @@ hl.config({
     }
 
     function dpmsOn() {
-        if (Hyprland.usingLua) {
+        if (luaConfigActive) {
             Hyprland.dispatch(`hl.dsp.dpms({ action = "enable" })`);
         } else {
             Hyprland.dispatch("dpms on");

@@ -77,6 +77,12 @@ DankPopout {
 
     readonly property color _containerBg: Theme.nestedSurface
 
+    // Defer open one tick so screen-change geometry settles before the surface
+    // maps; a synchronous open churns the surface and loses the blur on a switch.
+    function present() {
+        Qt.callLater(open);
+    }
+
     function openWithSection(section) {
         StateUtils.openWithSection(root, section);
     }
@@ -93,11 +99,12 @@ DankPopout {
     shouldBeVisible: false
 
     property bool credentialsPromptOpen: NetworkService.credentialsRequested
-    property bool wifiPasswordModalOpen: PopoutService.wifiPasswordModal?.visible ?? false
+    property bool wifiPasswordModalOpen: PopoutService.wifiPasswordModal?.shouldBeVisible ?? false
     property bool polkitModalOpen: PopoutService.polkitAuthModal?.visible ?? false
     property bool anyModalOpen: credentialsPromptOpen || wifiPasswordModalOpen || polkitModalOpen || powerMenuOpen
 
     backgroundInteractive: !anyModalOpen
+    hoverDismissSuspended: editMode || anyModalOpen
 
     onCredentialsPromptOpenChanged: {
         if (credentialsPromptOpen && shouldBeVisible)
@@ -109,15 +116,7 @@ DankPopout {
             close();
     }
 
-    customKeyboardFocus: {
-        if (!shouldBeVisible)
-            return WlrKeyboardFocus.None;
-        if (anyModalOpen)
-            return WlrKeyboardFocus.None;
-        if (CompositorService.useHyprlandFocusGrab)
-            return WlrKeyboardFocus.OnDemand;
-        return WlrKeyboardFocus.Exclusive;
-    }
+    customKeyboardFocus: anyModalOpen ? WlrKeyboardFocus.None : null
 
     onBackgroundClicked: close()
 
@@ -273,6 +272,7 @@ DankPopout {
                         onMoveWidget: (fromIndex, toIndex) => widgetModel.moveWidget(fromIndex, toIndex)
                         onToggleWidgetSize: index => widgetModel.toggleWidgetSize(index)
                         onCollapseRequested: root.collapseAll()
+                        onConfigRequested: (idx, data, anchor) => widgetConfigOverlay.open(idx, data, anchor)
                     }
 
                     EditControls {
@@ -303,6 +303,11 @@ DankPopout {
                 anchors.fill: parent
                 z: 10000
             }
+
+            WidgetConfigOverlay {
+                id: widgetConfigOverlay
+                anchors.fill: parent
+            }
         }
     }
 
@@ -315,6 +320,7 @@ DankPopout {
         id: bluetoothDetailComponent
         BluetoothDetail {
             id: bluetoothDetail
+            bluetoothCodecModalRef: contentLoader.item ? contentLoader.item.bluetoothCodecSelector : null
             onShowCodecSelector: function (device) {
                 if (contentLoader.item && contentLoader.item.bluetoothCodecSelector) {
                     contentLoader.item.bluetoothCodecSelector.show(device);

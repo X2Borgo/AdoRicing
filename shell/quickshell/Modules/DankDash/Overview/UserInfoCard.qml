@@ -67,8 +67,7 @@ Card {
                             return I18n.tr("on Niri");
                         if (CompositorService.isHyprland)
                             return I18n.tr("on Hyprland");
-                        // technically they might not be on mangowc, but its what we support in the docs
-                        if (CompositorService.isDwl)
+                        if (CompositorService.isMango)
                             return I18n.tr("on MangoWC");
                         if (CompositorService.isSway)
                             return I18n.tr("on Sway");
@@ -79,7 +78,7 @@ Card {
                         return "";
                     }
                     font.pixelSize: Theme.fontSizeSmall
-                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.8)
+                    color: Theme.surfaceTextMedium
                     anchors.verticalCenter: parent.verticalCenter
                     elide: Text.ElideRight
                     width: parent.parent.parent.parent.width - avatarContainer.width - Theme.spacingM * 3 - 16 - Theme.spacingS
@@ -99,9 +98,9 @@ Card {
                 }
 
                 StyledText {
-                    text: DgopService.shortUptime || I18n.tr("up")
+                    text: DgopService.shortUptime ? I18n.tr("up", "uptime prefix, e.g. 'up 4h 2m'") + DgopService.shortUptime.slice(2) : I18n.tr("up", "uptime prefix, e.g. 'up 4h 2m'")
                     font.pixelSize: Theme.fontSizeSmall
-                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                    color: Theme.surfaceTextMedium
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }

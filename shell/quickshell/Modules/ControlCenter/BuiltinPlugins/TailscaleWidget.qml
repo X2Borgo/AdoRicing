@@ -25,7 +25,14 @@ PluginComponent {
     }
     ccWidgetIsActive: TailscaleService.connected
 
-    onCcWidgetToggled: {}
+    onCcWidgetToggled: {
+        if (!TailscaleService.available)
+            return;
+        if (TailscaleService.connected)
+            TailscaleService.disconnectTailscale(null);
+        else
+            TailscaleService.connectTailscale(null);
+    }
 
     ccDetailContent: Component {
         Rectangle {
@@ -37,7 +44,9 @@ PluginComponent {
 
             implicitHeight: detailColumn.implicitHeight + Theme.spacingM * 2
             radius: Theme.cornerRadius
-            color: Theme.surfaceContainerHigh
+            color: Theme.nestedSurface
+            border.color: Theme.outlineMedium
+            border.width: Theme.layerOutlineWidth
 
             Column {
                 id: detailColumn
@@ -87,6 +96,126 @@ PluginComponent {
                         id: headerColumn
                         width: parent.width
                         spacing: Theme.spacingS
+
+                        // Connection status + connect/disconnect. Always shown
+                        // (when available) so the connection can be toggled from
+                        // the detail, including while disconnected.
+                        RowLayout {
+                            width: parent.width
+                            spacing: Theme.spacingS
+
+                            Column {
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                spacing: 1
+
+                                StyledText {
+                                    text: TailscaleService.connected ? I18n.tr("Connected", "Tailscale connection status: connected") : I18n.tr("Disconnected", "Tailscale connection status: disconnected")
+                                    font.pixelSize: Theme.fontSizeMedium
+                                    font.weight: Font.Medium
+                                    color: Theme.surfaceText
+                                }
+
+                                StyledText {
+                                    visible: TailscaleService.connected && TailscaleService.tailnetName.length > 0
+                                    text: TailscaleService.tailnetName
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: Theme.surfaceVariantText
+                                    width: parent.width
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Rectangle {
+                                id: connButton
+                                Layout.alignment: Qt.AlignVCenter
+                                height: 28
+                                radius: 14
+                                width: connButtonRow.implicitWidth + Theme.spacingM * 2
+
+                                readonly property bool isConnected: TailscaleService.connected
+                                color: {
+                                    if (!connButtonArea.containsMouse)
+                                        return Theme.surfaceLight;
+                                    return isConnected ? Theme.errorHover : Theme.primaryHoverLight;
+                                }
+
+                                Row {
+                                    id: connButtonRow
+                                    anchors.centerIn: parent
+                                    spacing: Theme.spacingXS
+
+                                    DankIcon {
+                                        name: connButton.isConnected ? "link_off" : "link"
+                                        size: Theme.fontSizeSmall
+                                        color: connButton.isConnected ? Theme.surfaceText : Theme.primary
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    StyledText {
+                                        text: connButton.isConnected ? I18n.tr("Disconnect", "Tailscale disconnect button") : I18n.tr("Connect", "Tailscale connect button")
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.weight: Font.Medium
+                                        color: connButton.isConnected ? Theme.surfaceText : Theme.primary
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: connButtonArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (TailscaleService.connected)
+                                            TailscaleService.disconnectTailscale(null);
+                                        else
+                                            TailscaleService.connectTailscale(null);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Connection controls: exit node picker + LAN access.
+                        // Only meaningful while the backend is connected.
+                        Column {
+                            id: controlsColumn
+                            width: parent.width
+                            spacing: Theme.spacingS
+                            visible: TailscaleService.connected
+
+                            readonly property string noneLabel: I18n.tr("None", "Tailscale exit node: none selected")
+
+                            DankDropdown {
+                                width: parent.width
+                                text: I18n.tr("Exit node", "Tailscale exit node selector label")
+                                currentValue: TailscaleService.currentExitNode ? TailscaleService.currentExitNode.hostname : controlsColumn.noneLabel
+                                options: {
+                                    const opts = [controlsColumn.noneLabel];
+                                    for (const p of TailscaleService.exitNodeOptions)
+                                        opts.push(p.hostname);
+                                    return opts;
+                                }
+                                onValueChanged: value => {
+                                    if (value === controlsColumn.noneLabel) {
+                                        TailscaleService.clearExitNode(null);
+                                        return;
+                                    }
+                                    const peer = TailscaleService.exitNodeOptions.find(p => p.hostname === value);
+                                    if (peer)
+                                        TailscaleService.setExitNode(peer.id, null);
+                                }
+                            }
+
+                            DankToggle {
+                                width: parent.width
+                                text: I18n.tr("Allow LAN access", "Tailscale allow LAN access toggle")
+                                description: I18n.tr("Reach local network devices while using an exit node", "Tailscale allow LAN access description")
+                                visible: TailscaleService.currentExitNode !== null
+                                checked: TailscaleService.exitNodeAllowLanAccess
+                                onToggled: value => TailscaleService.setAllowLanAccess(value, null)
+                            }
+                        }
 
                         // Search bar + refresh button
                         RowLayout {
@@ -207,13 +336,15 @@ PluginComponent {
                                     required property var modelData
                                     required property int index
 
+                                    readonly property bool isSelf: modelData.hostname === (TailscaleService.selfNode ? TailscaleService.selfNode.hostname : "")
+                                    readonly property bool isExpanded: detailRoot.expandedHostname === modelData.hostname
+
                                     width: peerListColumn.width
                                     height: peerCardColumn.implicitHeight + Theme.spacingS * 2
                                     radius: Theme.cornerRadius
-                                    color: modelData.hostname === (TailscaleService.selfNode ? TailscaleService.selfNode.hostname : "") ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : Theme.surfaceContainerHighest
-
-                                    property bool isSelf: modelData.hostname === (TailscaleService.selfNode ? TailscaleService.selfNode.hostname : "")
-                                    property bool isExpanded: detailRoot.expandedHostname === modelData.hostname
+                                    color: peerMouseArea.containsMouse ? Theme.primaryHoverLight : Theme.surfaceLight
+                                    border.color: isSelf ? Theme.primary : Theme.outlineLight
+                                    border.width: isSelf ? 2 : 1
 
                                     Column {
                                         id: peerCardColumn
@@ -221,7 +352,7 @@ PluginComponent {
                                         anchors.right: parent.right
                                         anchors.top: parent.top
                                         anchors.margins: Theme.spacingS
-                                        spacing: 2
+                                        spacing: Theme.spacingXXS
 
                                         RowLayout {
                                             width: parent.width
@@ -231,14 +362,14 @@ PluginComponent {
                                                 width: 8
                                                 height: 8
                                                 radius: 4
-                                                color: modelData.online ? "#4caf50" : Theme.surfaceVariantText
+                                                color: modelData.online ? Theme.success : Theme.surfaceVariantText
                                                 Layout.alignment: Qt.AlignVCenter
                                             }
 
                                             StyledText {
                                                 text: modelData.hostname || ""
-                                                font.pixelSize: Theme.fontSizeSmall
-                                                font.weight: Font.Bold
+                                                font.pixelSize: Theme.fontSizeMedium
+                                                font.weight: isSelf ? Font.Medium : Font.Normal
                                                 color: Theme.surfaceText
                                                 Layout.fillWidth: true
                                                 elide: Text.ElideRight
@@ -247,7 +378,7 @@ PluginComponent {
                                             StyledText {
                                                 visible: isSelf
                                                 text: I18n.tr("This device", "Label for the user's own device in Tailscale")
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontSizeSmall
                                                 color: Theme.primary
                                                 font.weight: Font.Medium
                                             }
@@ -286,7 +417,7 @@ PluginComponent {
                                                 }
                                                 return parts.join(" \u2022 ");
                                             }
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontSizeSmall
                                             color: Theme.surfaceVariantText
                                             width: parent.width
                                             elide: Text.ElideRight
@@ -296,7 +427,7 @@ PluginComponent {
                                         Column {
                                             visible: isExpanded
                                             width: parent.width
-                                            spacing: 2
+                                            spacing: Theme.spacingXXS
                                             topPadding: 4
 
                                             RowLayout {
@@ -306,7 +437,7 @@ PluginComponent {
 
                                                 StyledText {
                                                     text: modelData.dnsName || ""
-                                                    font.pixelSize: 10
+                                                    font.pixelSize: Theme.fontSizeSmall
                                                     color: Theme.surfaceVariantText
                                                     Layout.fillWidth: true
                                                     elide: Text.ElideRight
@@ -324,14 +455,14 @@ PluginComponent {
                                             StyledText {
                                                 visible: (modelData.tags || []).length > 0
                                                 text: I18n.tr("Tags: %1", "Tailscale device tags").arg((modelData.tags || []).join(", "))
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontSizeSmall
                                                 color: Theme.surfaceVariantText
                                             }
 
                                             StyledText {
                                                 visible: (modelData.owner || "").length > 0
                                                 text: I18n.tr("Owner: %1", "Tailscale device owner").arg(modelData.owner || "")
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontSizeSmall
                                                 color: Theme.surfaceVariantText
                                             }
                                         }

@@ -15,7 +15,7 @@ Singleton {
     id: root
     readonly property var log: Log.scoped("SettingsData")
 
-    readonly property int settingsConfigVersion: 11
+    readonly property int settingsConfigVersion: 13
 
     readonly property bool isGreeterMode: Quickshell.env("DMS_RUN_GREETER") === "1" || Quickshell.env("DMS_RUN_GREETER") === "true"
 
@@ -107,7 +107,11 @@ Singleton {
         saveSettings();
     }
 
+    property bool clipboardClickToPaste: false
     property bool clipboardEnterToPaste: false
+    property bool clipboardRememberTypeFilter: false
+    property string clipboardTypeFilter: "all"
+    property var clipboardVisibleEntryActions: ["pin", "edit", "delete"]
 
     property var launcherPluginVisibility: ({})
 
@@ -163,6 +167,8 @@ Singleton {
     property real popupTransparency: 1.0
     property real dockTransparency: 1
     property string widgetBackgroundColor: "sch"
+    property string widgetBackgroundCustomColor: "#6750A4"
+    property real widgetBackgroundCustomStrength: 0.50
     property string widgetColorMode: "default"
     property string controlCenterTileColorMode: "primary"
     property string buttonColorMode: "primary"
@@ -171,15 +177,25 @@ Singleton {
     property int niriLayoutRadiusOverride: -1
     property int niriLayoutBorderSize: -1
     property int hyprlandLayoutGapsOverride: -1
+    property int hyprlandLayoutGapsOutOverride: -1
     property int hyprlandLayoutRadiusOverride: -1
     property int hyprlandLayoutBorderSize: -1
+    property bool hyprlandResizeOnBorder: false
     property int mangoLayoutGapsOverride: -1
+    property int mangoLayoutGapsOutOverride: -1
     property int mangoLayoutRadiusOverride: -1
     property int mangoLayoutBorderSize: -1
+    property bool mangoTrackpadNaturalScrolling: true
 
     property int firstDayOfWeek: -1
     property bool showWeekNumber: false
-    property bool use24HourClock: true
+    property string calendarBackend: "auto"
+    property string clockFormat: "auto"
+    readonly property bool localeUses24Hour: {
+        const fmt = Qt.locale().timeFormat(Locale.ShortFormat).replace(/'[^']*'/g, "");
+        return !/[aA]/.test(fmt);
+    }
+    readonly property bool use24HourClock: clockFormat === "24h" ? true : (clockFormat === "12h" ? false : localeUses24Hour)
     property bool showSeconds: false
     property bool padHours12Hour: false
     property bool useFahrenheit: false
@@ -224,6 +240,8 @@ Singleton {
     onBlurForegroundLayersChanged: saveSettings()
     property real blurLayerOutlineOpacity: 0.12
     onBlurLayerOutlineOpacityChanged: saveSettings()
+    property bool blurBorderEnabled: true
+    onBlurBorderEnabledChanged: saveSettings()
     property string blurBorderColor: "outline"
     onBlurBorderColorChanged: saveSettings()
     property string blurBorderCustomColor: "#ffffff"
@@ -233,11 +251,39 @@ Singleton {
     property string wallpaperFillMode: "Fill"
     property bool blurredWallpaperLayer: false
     property bool blurWallpaperOnOverview: false
+    property string wallpaperBackgroundColorMode: "black"
+    property string wallpaperBackgroundCustomColor: "#000000"
+    readonly property color effectiveWallpaperBackgroundColor: {
+        switch (wallpaperBackgroundColorMode) {
+        case "black":
+            return "#000000";
+        case "white":
+            return "#ffffff";
+        case "primary":
+            return Theme.primary;
+        case "surface":
+            return Theme.surfaceContainer;
+        case "custom":
+            return wallpaperBackgroundCustomColor;
+        default:
+            return "#000000";
+        }
+    }
 
     property bool frameEnabled: false
-    onFrameEnabledChanged: saveSettings()
+    onFrameEnabledChanged: {
+        saveSettings();
+        if (!_loading)
+            updateFrameCompositorLayout();
+    }
     property real frameThickness: 16
     onFrameThicknessChanged: saveSettings()
+    property int barInsetPaddingShared: -1
+    onBarInsetPaddingSharedChanged: saveSettings()
+    property bool barInsetPaddingSyncAll: false
+    onBarInsetPaddingSyncAllChanged: saveSettings()
+    property int frameBarInsetPadding: -1
+    onFrameBarInsetPaddingChanged: saveSettings()
     property real frameRounding: 23
     onFrameRoundingChanged: saveSettings()
     property string frameColor: ""
@@ -258,11 +304,15 @@ Singleton {
     onFrameLauncherEmergeSideChanged: saveSettings()
     property bool frameLauncherArcExtender: false
     onFrameLauncherArcExtenderChanged: saveSettings()
-    property bool frameUseSpotlightLauncher: false
-    onFrameUseSpotlightLauncherChanged: saveSettings()
+    property bool frameLauncherEdgeHover: false
+    onFrameLauncherEdgeHoverChanged: saveSettings()
     readonly property string frameModalEmergeSide: frameLauncherEmergeSide === "top" ? "bottom" : "top"
     property string frameMode: "connected"
-    onFrameModeChanged: saveSettings()
+    onFrameModeChanged: {
+        saveSettings();
+        if (!_loading && frameEnabled)
+            updateFrameCompositorLayout();
+    }
     property var connectedFrameBarStyleBackups: ({})
     onConnectedFrameBarStyleBackupsChanged: saveSettings()
     readonly property bool connectedFrameModeActive: frameEnabled && frameMode === "connected"
@@ -317,6 +367,8 @@ Singleton {
     property bool controlCenterShowBatteryIcon: false
     property bool controlCenterShowPrinterIcon: false
     property bool controlCenterShowScreenSharingIcon: true
+    property bool controlCenterShowIdleInhibitorIcon: false
+    property bool controlCenterShowDoNotDisturbIcon: false
     property bool showPrivacyButton: true
     property bool privacyShowMicIcon: false
     property bool privacyShowCameraIcon: false
@@ -372,6 +424,7 @@ Singleton {
     property bool showWorkspaceApps: false
     property bool workspaceDragReorder: true
     property bool groupWorkspaceApps: true
+    property bool groupActiveWorkspaceApps: false
     property int maxWorkspaceIcons: 3
     property int workspaceAppIconSizeOffset: 0
     property bool workspaceFollowFocus: false
@@ -380,25 +433,51 @@ Singleton {
     property bool dwlShowAllTags: false
     property bool workspaceActiveAppHighlightEnabled: false
     property string workspaceColorMode: "default"
+    property string workspaceFocusedCustomColor: "#6750A4"
     property string workspaceOccupiedColorMode: "none"
+    property string workspaceOccupiedCustomColor: "#625B71"
     property string workspaceUnfocusedColorMode: "default"
+    property string workspaceUnfocusedCustomColor: "#49454E"
     property string workspaceUrgentColorMode: "default"
+    property string workspaceUrgentCustomColor: "#B3261E"
     property bool workspaceFocusedBorderEnabled: false
     property string workspaceFocusedBorderColor: "primary"
+    property string workspaceFocusedBorderCustomColor: "#6750A4"
     property int workspaceFocusedBorderThickness: 2
+    property bool workspaceUnfocusedMonitorSeparateAppearance: false
+    property string workspaceUnfocusedMonitorColorMode: "default"
+    property string workspaceUnfocusedMonitorFocusedCustomColor: "#6750A4"
+    property string workspaceUnfocusedMonitorOccupiedColorMode: "none"
+    property string workspaceUnfocusedMonitorOccupiedCustomColor: "#625B71"
+    property string workspaceUnfocusedMonitorUnfocusedColorMode: "default"
+    property string workspaceUnfocusedMonitorUnfocusedCustomColor: "#49454E"
+    property string workspaceUnfocusedMonitorUrgentColorMode: "default"
+    property string workspaceUnfocusedMonitorUrgentCustomColor: "#B3261E"
+    property bool workspaceUnfocusedMonitorBorderEnabled: false
+    property string workspaceUnfocusedMonitorBorderColor: "primary"
+    property string workspaceUnfocusedMonitorBorderCustomColor: "#6750A4"
+    property int workspaceUnfocusedMonitorBorderThickness: 2
     property var workspaceNameIcons: ({})
     property bool waveProgressEnabled: true
     property bool scrollTitleEnabled: true
     property bool mediaAdaptiveWidthEnabled: true
     property bool audioVisualizerEnabled: true
+    property bool mediaUseAlbumArtAccent: false
     property string audioScrollMode: "volume"
     property int audioWheelScrollAmount: 5
+    property bool audioDeviceScrollVolumeEnabled: false
+    property var mediaExcludePlayers: []
     property bool clockCompactMode: false
+    property int focusedWindowSize: 1
     property bool focusedWindowCompactMode: false
+    property bool focusedWindowShowIcon: true
     property bool runningAppsCompactMode: true
     property int barMaxVisibleApps: 0
     property int barMaxVisibleRunningApps: 0
     property bool barShowOverflowBadge: true
+    property bool trayAutoOverflow: true
+    property bool trayPopupSingleLine: true
+    property int trayMaxVisibleItems: 0
     property bool appsDockHideIndicators: false
     property bool appsDockColorizeActive: false
     property string appsDockActiveColorMode: "primary"
@@ -406,6 +485,7 @@ Singleton {
     property int appsDockEnlargePercentage: 125
     property int appsDockIconSizePercentage: 100
     property bool keyboardLayoutNameCompactMode: false
+    property bool keyboardLayoutNameShowIcon: false
     property bool runningAppsCurrentWorkspace: true
     property bool runningAppsGroupByApp: false
     property bool runningAppsCurrentMonitor: false
@@ -415,15 +495,15 @@ Singleton {
     property string lockDateFormat: ""
     property bool greeterRememberLastSession: true
     property bool greeterRememberLastUser: true
+    property bool greeterAutoLogin: false
     property bool greeterEnableFprint: false
     property bool greeterEnableU2f: false
     property string greeterWallpaperPath: ""
-    property bool greeterUse24HourClock: true
-    property bool greeterShowSeconds: false
-    property bool greeterPadHours12Hour: false
     property string greeterLockDateFormat: ""
     property string greeterFontFamily: ""
     property string greeterWallpaperFillMode: ""
+    property bool greeterSyncPending: false
+    property var greeterSyncBaseline: ({})
     property int mediaSize: 1
 
     property string appLauncherViewMode: "list"
@@ -436,12 +516,15 @@ Singleton {
     property int appLauncherGridColumns: 4
     property bool spotlightCloseNiriOverview: true
     property bool rememberLastQuery: false
+    property bool rememberLastMode: true
     property var spotlightSectionViewModes: ({})
     onSpotlightSectionViewModesChanged: saveSettings()
     property var appDrawerSectionViewModes: ({})
     onAppDrawerSectionViewModesChanged: saveSettings()
     property bool niriOverviewOverlayEnabled: true
+    property string niriOverviewLauncherStyle: "full"
     property string dankLauncherV2Size: "compact"
+    property bool dankLauncherV2ShowSourceBadges: true
     property bool dankLauncherV2BorderEnabled: false
     property int dankLauncherV2BorderThickness: 2
     property string dankLauncherV2BorderColor: "primary"
@@ -449,7 +532,11 @@ Singleton {
     property bool dankLauncherV2UnloadOnClose: false
     property bool dankLauncherV2IncludeFilesInAll: false
     property bool dankLauncherV2IncludeFoldersInAll: false
+    property bool launcherUseOverlayLayer: false
     property string launcherStyle: "full"
+    property bool spotlightBarShowModeChips: false
+    property bool keybindsFloatingWindow: false
+    onKeybindsFloatingWindowChanged: saveSettings()
 
     property string _legacyWeatherLocation: "New York, NY"
     property string _legacyWeatherCoordinates: "40.7128,-74.0060"
@@ -459,9 +546,101 @@ Singleton {
     property bool useAutoLocation: false
     property bool weatherEnabled: true
 
+    readonly property var _dashTabIds: ["overview", "media", "wallpaper", "weather", "settings"]
+    readonly property var _dashTabsDefault: [
+        {
+            "id": "overview",
+            "enabled": true
+        },
+        {
+            "id": "media",
+            "enabled": true
+        },
+        {
+            "id": "wallpaper",
+            "enabled": true
+        },
+        {
+            "id": "weather",
+            "enabled": true
+        },
+        {
+            "id": "settings",
+            "enabled": true
+        }
+    ]
+    property var dashTabs: _dashTabsDefault
+    onDashTabsChanged: saveSettings()
+
+    function getDashTabs() {
+        const stored = Array.isArray(dashTabs) ? dashTabs : [];
+        const result = [];
+        const seen = {};
+        for (var i = 0; i < stored.length; i++) {
+            const id = stored[i] && stored[i].id;
+            if (_dashTabIds.indexOf(id) < 0 || seen[id])
+                continue;
+            seen[id] = true;
+            result.push({
+                "id": id,
+                "enabled": stored[i].enabled !== false
+            });
+        }
+        for (var j = 0; j < _dashTabIds.length; j++) {
+            if (!seen[_dashTabIds[j]])
+                result.push({
+                    "id": _dashTabIds[j],
+                    "enabled": true
+                });
+        }
+        return result;
+    }
+
+    function visibleDashTabIds() {
+        return getDashTabs().filter(t => t.enabled && (t.id !== "weather" || weatherEnabled)).map(t => t.id);
+    }
+
+    function dashTabIndexForId(id) {
+        const idx = visibleDashTabIds().indexOf(id);
+        return idx < 0 ? 0 : idx;
+    }
+
+    function setDashTabOrder(ids) {
+        const current = getDashTabs();
+        const ordered = [];
+        for (var i = 0; i < ids.length; i++) {
+            const existing = current.find(t => t.id === ids[i]);
+            if (existing)
+                ordered.push(existing);
+        }
+        for (var j = 0; j < current.length; j++) {
+            if (ids.indexOf(current[j].id) < 0)
+                ordered.push(current[j]);
+        }
+        dashTabs = ordered;
+    }
+
+    function setDashTabEnabled(id, on) {
+        dashTabs = getDashTabs().map(t => t.id === id ? {
+                "id": t.id,
+                "enabled": on
+            } : t);
+    }
+
+    function resetDashTabs() {
+        dashTabs = _dashTabsDefault.map(t => ({
+                    "id": t.id,
+                    "enabled": t.enabled
+                }));
+    }
+
     property string networkPreference: "auto"
 
-    property string iconTheme: "System Default"
+    property string iconThemeDark: "System Default"
+    property string iconThemeLight: "System Default"
+    property bool iconThemePerMode: false
+    property string lastAppliedIconTheme: ""
+    readonly property string iconTheme: resolveIconTheme()
     property var availableIconThemes: ["System Default"]
     property string systemDefaultIconTheme: ""
     property bool qt5ctAvailable: false
@@ -480,7 +659,7 @@ Singleton {
                 "hideOnTouch": false,
                 "inactiveTimeout": 0
             },
-            "dwl": {
+            "mango": {
                 "cursorHideTimeout": 0
             }
         })
@@ -506,14 +685,42 @@ Singleton {
     property bool notepadUseMonospace: true
     property string notepadFontFamily: ""
     property real notepadFontSize: 14
+    property real notificationSummaryFontSize: Spec.SPEC.notificationSummaryFontSize.def
+    property real notificationBodyFontSize: Spec.SPEC.notificationBodyFontSize.def
     property bool notepadShowLineNumbers: false
+    property bool notepadAutoSave: false
+    property string notepadSlideoutSide: "right"
+    property string notepadDefaultMode: "slideout"
     property real notepadTransparencyOverride: -1
     property real notepadLastCustomTransparency: 0.7
+    property bool notepadUseCompositorGap: false
+    property int notepadEdgeGap: 0
+
+    // Compositor layout gap when enabled and available, else the manual value.
+    readonly property int notepadEffectiveEdgeGap: {
+        if (notepadUseCompositorGap) {
+            var g = -1;
+            if (CompositorService.isNiri)
+                g = niriLayoutGapsOverride;
+            else if (CompositorService.isHyprland)
+                g = hyprlandLayoutGapsOverride;
+            else if (CompositorService.isMango)
+                g = mangoLayoutGapsOverride;
+            if (g >= 0)
+                return g;
+        }
+        return Math.max(0, notepadEdgeGap);
+    }
 
     onNotepadUseMonospaceChanged: saveSettings()
     onNotepadFontFamilyChanged: saveSettings()
     onNotepadFontSizeChanged: saveSettings()
     onNotepadShowLineNumbersChanged: saveSettings()
+    onNotepadAutoSaveChanged: saveSettings()
+    onNotepadSlideoutSideChanged: saveSettings()
+    onNotepadDefaultModeChanged: saveSettings()
+    onNotepadUseCompositorGapChanged: saveSettings()
+    onNotepadEdgeGapChanged: saveSettings()
     // onCenteringModeChanged: saveSettings()
     onNotepadTransparencyOverrideChanged: {
         if (notepadTransparencyOverride > 0) {
@@ -529,6 +736,7 @@ Singleton {
     property bool soundVolumeChanged: true
     property bool soundPluggedIn: true
     property bool soundLogin: false
+    property bool muteSoundsWhenMediaPlaying: true
 
     property int acMonitorTimeout: 0
     property int acLockTimeout: 0
@@ -543,6 +751,21 @@ Singleton {
     property string batteryProfileName: ""
     property int batteryPostLockMonitorTimeout: 0
     property int batteryChargeLimit: 100
+    property bool batteryNotifyChargeLimit: false
+    property int batteryCriticalThreshold: 10
+    property bool batteryNotifyCritical: true
+    property int batteryLowThreshold: 20
+    property bool batteryNotifyLow: false
+    property int batteryChargeLimitNotificationType: 0
+    property int batteryLowNotificationType: 0
+    property int batteryCriticalNotificationType: 1
+    property bool batteryAutoPowerSaver: false
+    property bool showBatteryPercent: true
+    property bool showBatteryPercentOnlyOnBattery: false
+    property bool showBatteryTime: false
+    property bool showBatteryTimeOnlyOnBattery: false
+    property bool batteryPillStyle: false
+    property bool batteryPillPercentSign: false
     property bool lockBeforeSuspend: false
     property bool loginctlLockIntegration: true
     property bool fadeToLockEnabled: true
@@ -550,11 +773,6 @@ Singleton {
     property bool fadeToDpmsEnabled: true
     property int fadeToDpmsGracePeriod: 5
     property string launchPrefix: ""
-    property var brightnessDevicePins: ({})
-    property var wifiNetworkPins: ({})
-    property var bluetoothDevicePins: ({})
-    property var audioInputDevicePins: ({})
-    property var audioOutputDevicePins: ({})
 
     property bool gtkThemingEnabled: false
     property bool qtThemingEnabled: false
@@ -606,7 +824,7 @@ Singleton {
     property bool showDock: false
     property bool dockAutoHide: false
     property bool dockSmartAutoHide: false
-    property bool dockHideOnFullscreen: true
+    property bool dockUseOverlayLayer: false
     property bool dockGroupByApp: false
     property bool dockRestoreSpecialWorkspaceOnClick: false
     property bool dockOpenOnOverview: false
@@ -638,6 +856,7 @@ Singleton {
     property bool notificationOverlayEnabled: false
     property bool notificationPopupShadowEnabled: true
     property bool notificationPopupPrivacyMode: false
+    property bool notificationForegroundLayers: true
     property int overviewRows: 2
     property int overviewColumns: 5
     property real overviewScale: 0.16
@@ -674,18 +893,28 @@ Singleton {
     readonly property bool greeterU2fReady: Processes.greeterU2fReady
     readonly property string greeterU2fReason: Processes.greeterU2fReason
     readonly property string greeterU2fSource: Processes.greeterU2fSource
-    property string lockScreenActiveMonitor: "all"
+    property string lockPamPath: ""
+    property bool lockPamInlineFprint: false
+    property bool lockPamInlineU2f: false
+    property bool lockPamExternallyManaged: false
+    property string lockU2fPamPath: ""
+    property bool greeterPamExternallyManaged: false
     property string lockScreenInactiveColor: "#000000"
     property int lockScreenNotificationMode: 0
     property bool lockScreenVideoEnabled: false
     property string lockScreenVideoPath: ""
     property bool lockScreenVideoCycling: false
+    property string lockScreenWallpaperPath: ""
+    property string lockScreenWallpaperFillMode: ""
+    property string lockScreenFontFamily: ""
     property bool hideBrightnessSlider: false
 
     property int notificationTimeoutLow: 5000
     property int notificationTimeoutNormal: 5000
     property int notificationTimeoutCritical: 0
     property bool notificationCompactMode: false
+    property bool notificationShowTimeoutBar: false
+    property bool notificationDedupeEnabled: true
     property int notificationPopupPosition: SettingsData.Position.Top
     property int notificationAnimationSpeed: SettingsData.AnimationSpeed.Short
     property int notificationCustomAnimationDuration: 400
@@ -706,6 +935,7 @@ Singleton {
     property bool osdBrightnessEnabled: true
     property bool osdIdleInhibitorEnabled: true
     property bool osdMicMuteEnabled: true
+    property bool osdMicVolumeEnabled: true
     property bool osdCapsLockEnabled: true
     property bool osdPowerProfileEnabled: true
     property bool osdAudioOutputEnabled: true
@@ -730,6 +960,7 @@ Singleton {
     property int updaterIntervalSeconds: 1800
     property bool updaterIncludeFlatpak: true
     property bool updaterAllowAUR: true
+    property var updaterIgnoredPackages: []
 
     property string displayNameMode: "system"
     property var screenPreferences: ({})
@@ -756,6 +987,7 @@ Singleton {
             "rightWidgets": ["systemTray", "clipboard", "cpuUsage", "memUsage", "notificationButton", "battery", "controlCenterButton"],
             "spacing": 4,
             "innerPadding": 4,
+            "barInsetPadding": -1,
             "bottomGap": 0,
             "transparency": 1.0,
             "widgetTransparency": 1.0,
@@ -787,6 +1019,7 @@ Singleton {
             "popupGapsAuto": true,
             "popupGapsManual": 4,
             "maximizeDetection": true,
+            "useOverlayLayer": false,
             "scrollEnabled": true,
             "scrollXBehavior": "column",
             "scrollYBehavior": "workspace",
@@ -794,7 +1027,9 @@ Singleton {
             "shadowOpacity": 60,
             "shadowColorMode": "default",
             "shadowCustomColor": "#000000",
-            "clickThrough": false
+            "clickThrough": false,
+            "hoverPopouts": false,
+            "hoverPopoutDelay": 150
         }
     ]
 
@@ -1113,6 +1348,35 @@ Singleton {
         return true;
     }
 
+    function moveDesktopWidgetInstanceToGroup(instanceId, groupId, newIndexInGroup) {
+        const instances = JSON.parse(JSON.stringify(desktopWidgetInstances || []));
+        const groups = desktopWidgetGroups || [];
+        const idx = instances.findIndex(inst => inst.id === instanceId);
+        if (idx === -1)
+            return false;
+        const [item] = instances.splice(idx, 1);
+        item.group = groupId || null;
+        const groupMatches = inst => {
+            if (!groupId)
+                return !inst.group || !groups.some(g => g.id === inst.group);
+            return inst.group === groupId;
+        };
+        const groupInstances = instances.filter(groupMatches);
+        const clamped = Math.max(0, Math.min(newIndexInGroup, groupInstances.length));
+        let targetGlobalIdx;
+        if (clamped >= groupInstances.length) {
+            const last = groupInstances[groupInstances.length - 1];
+            targetGlobalIdx = last ? instances.findIndex(inst => inst.id === last.id) + 1 : instances.length;
+        } else {
+            const targetInstance = groupInstances[clamped];
+            targetGlobalIdx = instances.findIndex(inst => inst.id === targetInstance.id);
+        }
+        instances.splice(targetGlobalIdx, 0, item);
+        desktopWidgetInstances = instances;
+        saveSettings();
+        return true;
+    }
+
     function createDesktopWidgetGroup(name) {
         const id = "dwg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
         const group = {
@@ -1209,8 +1473,25 @@ Singleton {
             NiriService.generateNiriLayoutConfig();
         if (CompositorService.isHyprland && typeof HyprlandService !== "undefined")
             HyprlandService.generateLayoutConfig();
-        if (CompositorService.isDwl && typeof DwlService !== "undefined")
-            DwlService.generateLayoutConfig();
+        if (CompositorService.isMango && typeof MangoService !== "undefined")
+            MangoService.generateLayoutConfig();
+    }
+
+    function updateFrameCompositorLayout() {
+        // Generate before begin() so compositor readiness is already pending at transitionRequested
+        if (typeof CompositorService !== "undefined") {
+            if (CompositorService.isNiri && typeof NiriService !== "undefined")
+                NiriService.generateNiriLayoutConfig(true);
+            if (CompositorService.isHyprland && typeof HyprlandService !== "undefined")
+                HyprlandService.generateLayoutConfig(true);
+        }
+        FrameTransitionState.begin();
+    }
+
+    function resolveIconTheme() {
+        if (iconThemePerMode && typeof SessionData !== "undefined" && SessionData.isLightMode)
+            return iconThemeLight;
+        return iconThemeDark;
     }
 
     function applyStoredIconTheme() {
@@ -1219,8 +1500,62 @@ Singleton {
         updateCosmicIconTheme();
     }
 
+    function setIconThemeUnmanaged() {
+        iconThemePerMode = false;
+        iconThemeDark = "System Default";
+        iconThemeLight = "System Default";
+        lastAppliedIconTheme = "";
+        saveSettings();
+    }
+
+    function checkIconThemeDrift() {
+        if (isGreeterMode)
+            return;
+        if (resolveIconTheme() === "System Default")
+            return;
+        if (!lastAppliedIconTheme)
+            return;
+        const script = `if command -v gsettings >/dev/null 2>&1; then
+        gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | sed "s/'//g"
+        elif command -v dconf >/dev/null 2>&1; then
+        dconf read /org/gnome/desktop/interface/icon-theme 2>/dev/null | sed "s/'//g"
+        fi`;
+
+        Proc.runCommand("iconThemeDriftCheck", ["sh", "-c", script], (output, exitCode) => {
+            const platform = (output || "").trim();
+            if (!platform)
+                return;
+            if (platform === root.lastAppliedIconTheme || platform === root.iconThemeDark || platform === root.iconThemeLight)
+                return;
+            root.setIconThemeUnmanaged();
+            ToastService.showWarning(I18n.tr("Icon theme changed outside DMS; switched to System Default", "shown when an external tool overrides the icon theme DMS applied"));
+        });
+    }
+
+    Connections {
+        target: typeof SessionData !== "undefined" ? SessionData : null
+        function onIsLightModeChanged() {
+            if (!SessionData.isSwitchingMode)
+                return;
+            if (!root.iconThemePerMode)
+                return;
+            if (root.iconThemeLight === root.iconThemeDark)
+                return;
+            root.applyStoredIconTheme();
+            root.saveSettings();
+        }
+    }
+
+    function cosmicIntegrationAvailable() {
+        const desktop = (Quickshell.env("XDG_CURRENT_DESKTOP") || "").toUpperCase();
+        return desktop.includes("COSMIC");
+    }
+
     function updateCosmicIconTheme() {
-        let cosmicThemeName = (iconTheme === "System Default") ? systemDefaultIconTheme : iconTheme;
+        if (!cosmicIntegrationAvailable())
+            return;
+        const resolved = resolveIconTheme();
+        let cosmicThemeName = (resolved === "System Default") ? systemDefaultIconTheme : resolved;
         if (!cosmicThemeName || cosmicThemeName === "System Default") {
             const detectScript = `if command -v gsettings >/dev/null 2>&1; then
             gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | sed "s/'//g"
@@ -1249,6 +1584,8 @@ Singleton {
     }
 
     function updateCosmicThemeMode(isLightMode) {
+        if (!cosmicIntegrationAvailable())
+            return;
         const isDark = isLightMode ? "false" : "true";
         const script = `mkdir -p ${_configDir}/cosmic/com.system76.CosmicTheme.Mode/v1
         printf '%s\\n' ${isDark} > ${_configDir}/cosmic/com.system76.CosmicTheme.Mode/v1/is_dark 2>/dev/null || true`;
@@ -1256,9 +1593,11 @@ Singleton {
     }
 
     function updateGtkIconTheme() {
-        const gtkThemeName = (iconTheme === "System Default") ? systemDefaultIconTheme : iconTheme;
+        const resolved = resolveIconTheme();
+        const gtkThemeName = (resolved === "System Default") ? systemDefaultIconTheme : resolved;
         if (gtkThemeName === "System Default" || gtkThemeName === "")
             return;
+        lastAppliedIconTheme = gtkThemeName;
         if (typeof DMSService !== "undefined" && DMSService.apiVersion >= 3 && typeof PortalService !== "undefined") {
             PortalService.setSystemIconTheme(gtkThemeName);
         }
@@ -1283,13 +1622,20 @@ Singleton {
         fi
         done
 
+        if command -v gsettings >/dev/null 2>&1; then
+        gsettings set org.gnome.desktop.interface icon-theme '${gtkThemeName}' 2>/dev/null || true
+        elif command -v dconf >/dev/null 2>&1; then
+        dconf write /org/gnome/desktop/interface/icon-theme "'${gtkThemeName}'" 2>/dev/null || true
+        fi
+
         pkill -HUP -f 'gtk' 2>/dev/null || true`;
 
         Quickshell.execDetached(["sh", "-lc", configScript]);
     }
 
     function updateQtIconTheme() {
-        const qtThemeName = (iconTheme === "System Default") ? "" : iconTheme;
+        const resolved = resolveIconTheme();
+        const qtThemeName = (resolved === "System Default") ? "" : resolved;
         if (!qtThemeName)
             return;
         const home = _homeUrl.replace("file://", "").replace(/'/g, "'\\''");
@@ -1328,6 +1674,41 @@ Singleton {
         });
     }
 
+    function scheduleGreeterAutoLoginSync() {
+        if (isGreeterMode)
+            return;
+        Qt.callLater(() => {
+            Processes.settingsRoot = root;
+            Processes.scheduleGreeterAutoLoginSync();
+        });
+    }
+
+    function markGreeterSyncPending(who, key, oldValue) {
+        if (isGreeterMode)
+            return;
+        if (!(key in greeterSyncBaseline)) {
+            var baseline = greeterSyncBaseline;
+            baseline[key] = oldValue;
+            greeterSyncBaseline = baseline;
+        }
+        greeterSyncPending = true;
+    }
+
+    function clearGreeterSyncPending() {
+        greeterSyncBaseline = {};
+        greeterSyncPending = false;
+        saveSettings();
+    }
+
+    function revertGreeterSyncPending() {
+        for (var key in greeterSyncBaseline) {
+            root[key] = greeterSyncBaseline[key];
+        }
+        greeterSyncBaseline = {};
+        greeterSyncPending = false;
+        saveSettings();
+    }
+
     readonly property var _hooks: ({
             "applyStoredTheme": applyStoredTheme,
             "regenSystemThemes": regenSystemThemes,
@@ -1335,7 +1716,9 @@ Singleton {
             "applyStoredIconTheme": applyStoredIconTheme,
             "updateBarConfigs": updateBarConfigs,
             "updateCompositorCursor": updateCompositorCursor,
-            "scheduleAuthApply": scheduleAuthApply
+            "scheduleAuthApply": scheduleAuthApply,
+            "scheduleGreeterAutoLoginSync": scheduleGreeterAutoLoginSync,
+            "markGreeterSyncPending": markGreeterSyncPending
         })
 
     function set(key, value) {
@@ -1353,6 +1736,7 @@ Singleton {
             let obj = (txt && txt.trim()) ? JSON.parse(txt) : null;
 
             const oldVersion = obj?.configVersion ?? 0;
+            const legacyPins = oldVersion < 13 ? Store.extractPins(obj) : null;
             if (oldVersion < settingsConfigVersion) {
                 const migrated = Store.migrateToVersion(obj, settingsConfigVersion);
                 if (migrated) {
@@ -1360,11 +1744,33 @@ Singleton {
                     obj = migrated;
                 }
             }
+            if (legacyPins)
+                Qt.callLater(() => CacheData.migratePins(legacyPins));
+
+            if (obj?.lockScreenActiveMonitor !== undefined) {
+                var oldVal = obj.lockScreenActiveMonitor;
+                if (oldVal && oldVal !== "all") {
+                    if (!obj.screenPreferences)
+                        obj.screenPreferences = {};
+                    if (obj.screenPreferences.lockScreen === undefined) {
+                        obj.screenPreferences.lockScreen = [oldVal];
+                    }
+                }
+                delete obj.lockScreenActiveMonitor;
+            }
+
+            if (obj?.use24HourClock !== undefined && obj?.clockFormat === undefined) {
+                obj.clockFormat = obj.use24HourClock ? "24h" : "12h";
+                delete obj.use24HourClock;
+            }
 
             Store.parse(root, obj);
 
             if (obj?.directionalAnimationMode === 3 && frameMode !== "connected")
                 frameMode = "connected";
+
+            if (obj?.iconTheme !== undefined && obj?.iconThemeDark === undefined)
+                iconThemeDark = obj.iconTheme;
 
             if (obj?.weatherLocation !== undefined)
                 _legacyWeatherLocation = obj.weatherLocation;
@@ -1381,6 +1787,7 @@ Singleton {
             applyStoredTheme();
             updateCompositorCursor();
             Processes.detectQtTools();
+            Qt.callLater(checkIconThemeDrift);
 
             _checkSettingsWritable();
         } catch (e) {
@@ -1623,6 +2030,15 @@ Singleton {
             "configs": anyChanged ? out : configs,
             "changed": anyChanged
         };
+    }
+
+    function effectiveBarConfigForRender(config, usesFrameBarChrome) {
+        if (!config || !connectedFrameModeActive || usesFrameBarChrome)
+            return config;
+        const backup = connectedFrameBarStyleBackups[config.id];
+        if (!backup)
+            return config;
+        return Object.assign({}, config, backup);
     }
 
     // Single entry point for connected-mode settings state.
@@ -2137,6 +2553,46 @@ Singleton {
         return barConfigs.filter(cfg => cfg.enabled);
     }
 
+    function _sideToPosition(side) {
+        switch (side) {
+        case "top":
+            return SettingsData.Position.Top;
+        case "bottom":
+            return SettingsData.Position.Bottom;
+        case "left":
+            return SettingsData.Position.Left;
+        case "right":
+            return SettingsData.Position.Right;
+        }
+        return -1;
+    }
+
+    // Check if a bar occupies the specified screen edge
+    function barOccupiesSide(screen, side) {
+        if (!screen)
+            return false;
+        const sidePos = _sideToPosition(side);
+        if (sidePos < 0)
+            return false;
+        const bars = getEnabledBarConfigs();
+        for (var i = 0; i < bars.length; i++) {
+            const bc = bars[i];
+            if (bc.position !== sidePos)
+                continue;
+            const prefs = bc.screenPreferences || ["all"];
+            if (prefs.includes("all") || isScreenInPreferences(screen, prefs))
+                return true;
+        }
+        return false;
+    }
+
+    // Check if the dock occupies the specified screen edge.
+    function dockOccupiesSide(side) {
+        if (!showDock)
+            return false;
+        return dockPosition === _sideToPosition(side);
+    }
+
     function getScreensSortedByPosition() {
         const screens = [];
         for (var i = 0; i < Quickshell.screens.length; i++) {
@@ -2214,7 +2670,10 @@ Singleton {
 
     function getFilteredScreens(componentId) {
         var prefs = screenPreferences && screenPreferences[componentId] || ["all"];
-        if (prefs.includes("all") || (typeof prefs[0] === "string" && prefs[0] === "all")) {
+        if (componentId === "wallpaper" && Array.isArray(prefs) && prefs.length === 0) {
+            return [];
+        }
+        if (!prefs || prefs.length === 0 || prefs.includes("all") || (typeof prefs[0] === "string" && prefs[0] === "all")) {
             return Quickshell.screens;
         }
         var filtered = Quickshell.screens.filter(screen => isScreenInPreferences(screen, prefs));
@@ -2376,10 +2835,24 @@ Singleton {
     }
 
     function setIconTheme(themeName) {
-        iconTheme = themeName;
-        updateGtkIconTheme();
-        updateQtIconTheme();
-        updateCosmicIconTheme();
+        const light = iconThemePerMode && typeof SessionData !== "undefined" && SessionData.isLightMode;
+        setIconThemeForMode(themeName, light);
+    }
+
+    function setIconThemeForMode(themeName, light) {
+        if (light)
+            iconThemeLight = themeName;
+        else
+            iconThemeDark = themeName;
+        applyStoredIconTheme();
+        saveSettings();
+        if (typeof Theme !== "undefined" && Theme.currentTheme === Theme.dynamic)
+            Theme.generateSystemThemesFromCurrentTheme();
+    }
+
+    function setIconThemePerMode(enabled) {
+        iconThemePerMode = enabled;
+        applyStoredIconTheme();
         saveSettings();
         if (typeof Theme !== "undefined" && Theme.currentTheme === Theme.dynamic)
             Theme.generateSystemThemesFromCurrentTheme();
@@ -2421,8 +2894,8 @@ Singleton {
             HyprlandService.generateCursorConfig();
             return;
         }
-        if (CompositorService.isDwl && typeof DwlService !== "undefined") {
-            DwlService.generateCursorConfig();
+        if (CompositorService.isMango && typeof MangoService !== "undefined") {
+            MangoService.generateCursorConfig();
             return;
         }
     }
@@ -2699,6 +3172,32 @@ Singleton {
             return;
         subs.splice(index, 1);
         appIdSubstitutions = subs;
+        saveSettings();
+    }
+
+    function addMediaExcludePlayer(identity) {
+        if (identity === undefined || identity === null)
+            return;
+        var normalizedIdentity = identity.toString().trim().toLowerCase();
+        if (!normalizedIdentity)
+            return;
+        var list = mediaExcludePlayers ? mediaExcludePlayers.slice() : [];
+        var normalizedList = list.map(function (id) {
+            return id ? id.toString().trim().toLowerCase() : "";
+        });
+        if (normalizedList.indexOf(normalizedIdentity) >= 0)
+            return;
+        list.push(normalizedIdentity);
+        mediaExcludePlayers = list;
+        saveSettings();
+    }
+
+    function removeMediaExcludePlayer(index) {
+        var list = mediaExcludePlayers ? mediaExcludePlayers.slice() : [];
+        if (index < 0 || index >= list.length)
+            return;
+        list.splice(index, 1);
+        mediaExcludePlayers = list;
         saveSettings();
     }
 
@@ -3122,6 +3621,9 @@ Singleton {
         onLoaded: {
             if (isGreeterMode)
                 return;
+            const wasLoaded = _hasLoaded;
+            const prevFrameEnabled = frameEnabled;
+            const prevFrameMode = frameMode;
             _loading = true;
             _hasUnsavedChanges = false;
             try {
@@ -3156,6 +3658,9 @@ Singleton {
             } finally {
                 _loading = false;
             }
+            // External edits reload under _loading, which skips the per-property transition triggers
+            if (wasLoaded && !_parseError && (frameEnabled !== prevFrameEnabled || (frameEnabled && frameMode !== prevFrameMode)))
+                updateFrameCompositorLayout();
         }
         onLoadFailed: error => {
             if (!isGreeterMode) {

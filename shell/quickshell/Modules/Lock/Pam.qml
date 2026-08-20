@@ -20,7 +20,11 @@ Scope {
     property string fprintState
     property string u2fState
     property bool u2fPending: false
+    property string u2fPendingMode
     property string buffer
+
+    property var attemptInfoMessages: []
+    property bool lockoutAnnouncedThisAttempt: false
 
     signal flashMsg
     signal unlockRequested
@@ -35,6 +39,7 @@ Scope {
         passwdActiveTimeout.running = false;
         unlockRequestTimeout.running = false;
         root.u2fPending = false;
+        root.u2fPendingMode = "";
         root.u2fState = "";
         root.unlockInProgress = false;
     }
@@ -58,6 +63,7 @@ Scope {
             u2fErrorRetry.running = false;
             u2fPendingTimeout.running = false;
             root.u2fPending = false;
+            root.u2fPendingMode = "";
             root.u2fState = "";
             unlockRequestTimeout.restart();
             unlockRequested();
@@ -65,7 +71,7 @@ Scope {
     }
 
     function proceedAfterPrimaryAuth(): void {
-        if (SettingsData.enableU2f && SettingsData.u2fMode === "and" && u2f.available) {
+        if (!root.u2fSuppressedByPrimaryPam && SettingsData.enableU2f && SettingsData.u2fMode === "and" && u2f.available) {
             u2f.startForSecondFactor();
         } else {
             completeUnlock();
@@ -79,8 +85,21 @@ Scope {
         u2fErrorRetry.running = false;
         u2fPendingTimeout.running = false;
         root.u2fPending = false;
+        root.u2fPendingMode = "";
         root.u2fState = "";
         fprint.checkAvail();
+    }
+
+    readonly property bool customPamActive: SettingsData.lockPamPath !== "" && customPamWatcher.loaded
+    readonly property bool fprintSuppressedByPrimaryPam: SettingsData.lockPamExternallyManaged || (customPamActive && SettingsData.lockPamInlineFprint)
+    readonly property bool u2fSuppressedByPrimaryPam: SettingsData.lockPamExternallyManaged || (customPamActive && SettingsData.lockPamInlineU2f)
+    readonly property bool customU2fPamActive: SettingsData.lockU2fPamPath !== "" && customU2fPamWatcher.loaded
+
+    FileView {
+        id: customPamWatcher
+
+        path: SettingsData.lockPamPath !== "" ? SettingsData.lockPamPath : ""
+        printErrors: false
     }
 
     FileView {
@@ -91,46 +110,110 @@ Scope {
     }
 
     FileView {
-        id: nixosMarker
+        id: u2fConfigWatcher
 
-        path: "/etc/NIXOS"
+        path: "/etc/pam.d/dankshell-u2f"
+        watchChanges: true
         printErrors: false
     }
 
     FileView {
-        id: u2fConfigWatcher
+        id: customU2fPamWatcher
 
-        path: "/etc/pam.d/dankshell-u2f"
+        path: SettingsData.lockU2fPamPath !== "" ? SettingsData.lockU2fPamPath : ""
         printErrors: false
     }
 
-    // Detects Nix-installed DMS on non-NixOS systems
-    readonly property bool runningFromNixStore: Quickshell.shellDir.startsWith("/nix/store/")
+    // Fallback stack written by `dms auth resolve-lock` when no managed
+    // /etc/pam.d/dankshell exists. See #2789.
+    readonly property string userPamDir: Paths.strip(Paths.state) + "/pam"
+
+    FileView {
+        id: userPamWatcher
+
+        path: root.userPamDir + "/dankshell"
+        printErrors: false
+    }
+
+    Process {
+        id: resolveUserPam
+
+        command: ["dms", "auth", "resolve-lock", "--quiet"]
+        running: false
+        onExited: exitCode => {
+            if (exitCode === 0)
+                userPamWatcher.reload();
+        }
+    }
+
+    function ensureUserPamConfig(): void {
+        if (SettingsData.lockPamExternallyManaged || resolveUserPam.running)
+            return;
+        resolveUserPam.running = true;
+    }
+
+    Component.onCompleted: ensureUserPamConfig()
 
     PamContext {
         id: passwd
 
-        config: dankshellConfigWatcher.loaded ? "dankshell" : "login"
-        configDirectory: (dankshellConfigWatcher.loaded || nixosMarker.loaded || root.runningFromNixStore) ? "/etc/pam.d" : Quickshell.shellDir + "/assets/pam"
+        config: {
+            if (root.customPamActive)
+                return SettingsData.lockPamPath.slice(SettingsData.lockPamPath.lastIndexOf("/") + 1);
+            if (SettingsData.lockPamExternallyManaged)
+                return "login";
+            if (dankshellConfigWatcher.loaded)
+                return "dankshell";
+            if (userPamWatcher.loaded)
+                return "dankshell";
+            return "login";
+        }
+        configDirectory: {
+            if (root.customPamActive) {
+                const idx = SettingsData.lockPamPath.lastIndexOf("/");
+                return idx > 0 ? SettingsData.lockPamPath.slice(0, idx) : "/";
+            }
+            if (SettingsData.lockPamExternallyManaged)
+                return "/etc/pam.d";
+            if (dankshellConfigWatcher.loaded)
+                return "/etc/pam.d";
+            if (userPamWatcher.loaded)
+                return root.userPamDir;
+            return Quickshell.shellDir + "/assets/pam";
+        }
 
         onMessageChanged: {
-            if (message.startsWith("The account is locked")) {
-                root.lockMessage = message;
-            } else if (root.lockMessage && message.endsWith(" left to unlock)")) {
-                root.lockMessage += "\n" + message;
-            } else if (root.lockMessage && message && message.length > 0) {
-                root.lockMessage = "";
-            }
+            // collected by position, not text, so it works in any locale
+            if (message.length > 0 && !responseRequired)
+                root.attemptInfoMessages = root.attemptInfoMessages.concat([message]);
         }
 
         onResponseRequiredChanged: {
             if (!responseRequired)
                 return;
 
+            const notice = root.attemptInfoMessages.filter(m => m !== message);
+            if (notice.length > 0) {
+                root.lockMessage = notice.join("\n");
+                root.lockoutAnnouncedThisAttempt = true;
+            }
+            root.attemptInfoMessages = [];
+
             respond(root.buffer);
         }
 
         onCompleted: res => {
+            // requisite preauth can lock without ever prompting; surface it here too
+            if (!root.lockoutAnnouncedThisAttempt) {
+                if (root.attemptInfoMessages.length > 0) {
+                    root.lockMessage = root.attemptInfoMessages.join("\n");
+                    root.lockoutAnnouncedThisAttempt = true;
+                } else {
+                    root.lockMessage = "";
+                }
+                root.attemptInfoMessages = [];
+            }
+
             if (res === PamResult.Success) {
                 if (!root.unlockInProgress) {
                     fprint.abort();
@@ -142,6 +225,7 @@ Scope {
             unlockRequestTimeout.running = false;
             root.unlockInProgress = false;
             root.u2fPending = false;
+            root.u2fPendingMode = "";
             root.u2fState = "";
             u2fPendingTimeout.running = false;
             u2f.abort();
@@ -163,6 +247,8 @@ Scope {
 
         function onActiveChanged() {
             if (passwd.active) {
+                root.attemptInfoMessages = [];
+                root.lockoutAnnouncedThisAttempt = false;
                 passwdActiveTimeout.restart();
             } else {
                 passwdActiveTimeout.running = false;
@@ -176,9 +262,11 @@ Scope {
         property bool available: SettingsData.lockFingerprintReady
         property int tries
         property int errorTries
+        property bool retrying: false
 
         function checkAvail(): void {
-            if (!available || !SettingsData.enableFprint || !root.lockSecured) {
+            if (!available || !SettingsData.enableFprint || !root.lockSecured || root.fprintSuppressedByPrimaryPam) {
+                retrying = false;
                 abort();
                 return;
             }
@@ -187,6 +275,7 @@ Scope {
 
             tries = 0;
             errorTries = 0;
+            retrying = false;
             start();
         }
 
@@ -199,6 +288,7 @@ Scope {
 
             switch (res) {
             case PamResult.Success:
+                retrying = false;
                 if (!root.unlockInProgress) {
                     passwd.abort();
                     root.proceedAfterPrimaryAuth();
@@ -207,13 +297,16 @@ Scope {
             case PamResult.Error:
                 errorTries++;
                 if (errorTries < 200) {
+                    retrying = true;
                     abort();
                     errorRetry.restart();
                     return;
                 }
+                retrying = false;
                 abort();
                 return;
             case PamResult.MaxTries:
+                retrying = false;
                 tries++;
                 if (tries < SettingsData.maxFprintTries) {
                     root.fprintState = "fail";
@@ -238,30 +331,51 @@ Scope {
         property bool available: SettingsData.lockU2fReady
 
         function checkAvail(): void {
-            if (!available || !SettingsData.enableU2f || !root.lockSecured) {
+            if (!available || !SettingsData.enableU2f || !root.lockSecured || root.u2fSuppressedByPrimaryPam) {
                 abort();
                 return;
             }
 
-            if (SettingsData.u2fMode === "or") {
-                start();
-            }
+            if (SettingsData.u2fMode === "or")
+                abort();
         }
 
         function startForSecondFactor(): void {
-            if (!available || !SettingsData.enableU2f) {
+            if (!available || !SettingsData.enableU2f || root.u2fSuppressedByPrimaryPam) {
                 root.completeUnlock();
                 return;
             }
             abort();
             root.u2fPending = true;
+            root.u2fPendingMode = "and";
             root.u2fState = "";
             u2fPendingTimeout.restart();
             start();
         }
 
-        config: u2fConfigWatcher.loaded ? "dankshell-u2f" : "u2f"
-        configDirectory: u2fConfigWatcher.loaded ? "/etc/pam.d" : Quickshell.shellDir + "/assets/pam"
+        function startForAlternativeAuth(): void {
+            if (!available || !SettingsData.enableU2f || root.u2fSuppressedByPrimaryPam || SettingsData.u2fMode !== "or" || root.unlockInProgress || passwd.active || active)
+                return;
+            abort();
+            root.u2fPending = true;
+            root.u2fPendingMode = "or";
+            root.u2fState = "";
+            u2fPendingTimeout.restart();
+            start();
+        }
+
+        config: {
+            if (root.customU2fPamActive)
+                return SettingsData.lockU2fPamPath.slice(SettingsData.lockU2fPamPath.lastIndexOf("/") + 1);
+            return u2fConfigWatcher.loaded ? "dankshell-u2f" : "u2f";
+        }
+        configDirectory: {
+            if (root.customU2fPamActive) {
+                const idx = SettingsData.lockU2fPamPath.lastIndexOf("/");
+                return idx > 0 ? SettingsData.lockU2fPamPath.slice(0, idx) : "/";
+            }
+            return u2fConfigWatcher.loaded ? "/etc/pam.d" : Quickshell.shellDir + "/assets/pam";
+        }
 
         onMessageChanged: {
             if (message.toLowerCase().includes("touch"))
@@ -281,9 +395,19 @@ Scope {
                 abort();
 
                 if (root.u2fPending) {
+                    if (root.u2fPendingMode === "or") {
+                        root.u2fPending = false;
+                        root.u2fPendingMode = "";
+                        root.u2fState = root.u2fState === "waiting" ? "" : "insert";
+                        u2fPendingTimeout.running = false;
+                        fprint.checkAvail();
+                        return;
+                    }
+
                     if (root.u2fState === "waiting") {
                         // AND mode: device was found but auth failed → back to password
                         root.u2fPending = false;
+                        root.u2fPendingMode = "";
                         root.u2fState = "";
                         fprint.checkAvail();
                     } else {
@@ -292,9 +416,7 @@ Scope {
                         u2fErrorRetry.restart();
                     }
                 } else {
-                    // OR mode: prompt to insert key, silently retry
                     root.u2fState = "insert";
-                    u2fErrorRetry.restart();
                 }
             }
         }
@@ -303,7 +425,7 @@ Scope {
     Timer {
         id: errorRetry
 
-        interval: 1500
+        interval: Math.min(1500 * Math.pow(2, Math.max(0, fprint.errorTries - 1)), 30000)
         onTriggered: fprint.start()
     }
 
@@ -367,8 +489,16 @@ Scope {
         root.fprintState = "";
         root.u2fState = "";
         root.u2fPending = false;
+        root.u2fPendingMode = "";
         root.lockMessage = "";
+        root.attemptInfoMessages = [];
+        root.lockoutAnnouncedThisAttempt = false;
         root.resetAuthFlows();
+        if (!SettingsData.lockPamExternallyManaged && !dankshellConfigWatcher.loaded && !userPamWatcher.loaded)
+            ensureUserPamConfig();
+        // FileView cannot watch a path that does not exist yet; re-read so a
+        // dedicated service created after startup is used on the next lock.
+        u2fConfigWatcher.reload();
         fprint.checkAvail();
         u2f.checkAvail();
     }
@@ -392,6 +522,32 @@ Scope {
             u2f.checkAvail();
         }
 
+        function onLockPamPathChanged(): void {
+            fprint.checkAvail();
+            u2f.checkAvail();
+        }
+
+        function onLockPamInlineFprintChanged(): void {
+            fprint.checkAvail();
+        }
+
+        function onLockPamInlineU2fChanged(): void {
+            u2f.checkAvail();
+        }
+
+        function onLockPamExternallyManagedChanged(): void {
+            root.resetAuthFlows();
+            if (!SettingsData.lockPamExternallyManaged)
+                root.ensureUserPamConfig();
+            fprint.checkAvail();
+            u2f.checkAvail();
+        }
+
+        function onLockU2fPamPathChanged(): void {
+            u2f.abort();
+            u2f.checkAvail();
+        }
+
         function onU2fModeChanged(): void {
             if (root.lockSecured) {
                 u2f.abort();
@@ -399,6 +555,7 @@ Scope {
                 u2fPendingTimeout.running = false;
                 unlockRequestTimeout.running = false;
                 root.u2fPending = false;
+                root.u2fPendingMode = "";
                 root.u2fState = "";
                 u2f.checkAvail();
             }

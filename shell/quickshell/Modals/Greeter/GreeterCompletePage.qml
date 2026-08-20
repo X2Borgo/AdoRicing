@@ -99,7 +99,7 @@ Item {
 
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
+                    spacing: Theme.spacingXXS
 
                     StyledText {
                         text: I18n.tr("You're All Set!", "greeter completion page title")
@@ -320,7 +320,7 @@ Item {
                                     url = "https://danklinux.com/docs/dankmaterialshell/compositors#dms-keybindings";
                                 else if (CompositorService.isHyprland)
                                     url = "https://danklinux.com/docs/dankmaterialshell/compositors#dms-keybindings-1";
-                                else if (CompositorService.isDwl)
+                                else if (CompositorService.isMango)
                                     url = "https://danklinux.com/docs/dankmaterialshell/compositors#dms-keybindings-2";
                                 Qt.openUrlExternally(url);
                             }

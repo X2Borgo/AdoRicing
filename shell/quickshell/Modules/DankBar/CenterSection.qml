@@ -15,6 +15,7 @@ Item {
     property real barSpacing: 4
     property var barConfig: null
     property var blurBarWindow: null
+    property real sectionAvailablePrimarySize: 0
     property bool overrideAxisLayout: false
     property bool forceVerticalLayout: false
 
@@ -28,6 +29,8 @@ Item {
     property var centerWidgets: []
     property int totalWidgets: 0
     property real totalSize: 0
+    property real contentStart: 0
+    property real contentSize: 0
 
     function updateLayout() {
         if (SettingsData.centeringMode === "geometric") {
@@ -35,6 +38,25 @@ Item {
         } else {
             applyIndexLayout();
         }
+        updateContentExtent();
+    }
+
+    function updateContentExtent() {
+        if (centerWidgets.length === 0) {
+            contentStart = 0;
+            contentSize = 0;
+            return;
+        }
+        let start = Infinity;
+        let end = -Infinity;
+        for (const widget of centerWidgets) {
+            const pos = isVertical ? widget.y : widget.x;
+            const size = isVertical ? widget.height : widget.width;
+            start = Math.min(start, pos);
+            end = Math.max(end, pos + size);
+        }
+        contentStart = start;
+        contentSize = end - start;
     }
 
     function applyGeometricLayout() {
@@ -47,7 +69,7 @@ Item {
 
         for (var i = 0; i < centerRepeater.count; i++) {
             const loader = centerRepeater.itemAt(i);
-            if (loader && loader.active && loader.item) {
+            if (loader && loader.active && loader.item && loader.item.visible) {
                 centerWidgets.push(loader.item);
                 totalWidgets++;
                 totalSize += isVertical ? loader.item.height : loader.item.width;
@@ -104,14 +126,14 @@ Item {
             if (!wrapper)
                 continue;
 
-            if (isOddConfigured && i === configuredMiddlePos && wrapper.active && wrapper.item)
+            if (isOddConfigured && i === configuredMiddlePos && wrapper.active && wrapper.item && wrapper.item.visible)
                 configuredMiddleWidget = wrapper.item;
-            if (!isOddConfigured && i === configuredLeftPos && wrapper.active && wrapper.item)
+            if (!isOddConfigured && i === configuredLeftPos && wrapper.active && wrapper.item && wrapper.item.visible)
                 configuredLeftWidget = wrapper.item;
-            if (!isOddConfigured && i === configuredRightPos && wrapper.active && wrapper.item)
+            if (!isOddConfigured && i === configuredRightPos && wrapper.active && wrapper.item && wrapper.item.visible)
                 configuredRightWidget = wrapper.item;
 
-            if (wrapper.active && wrapper.item) {
+            if (wrapper.active && wrapper.item && wrapper.item.visible) {
                 centerWidgets.push(wrapper.item);
                 totalWidgets++;
                 totalSize += isVertical ? wrapper.item.height : wrapper.item.width;
@@ -339,6 +361,9 @@ Item {
 
             readonly property bool active: widgetLoader.active
             readonly property var item: widgetLoader.item
+            readonly property bool itemVisible: widgetLoader.item?.visible ?? false
+
+            onItemVisibleChanged: layoutTimer.restart()
 
             WidgetHost {
                 id: widgetLoader
@@ -359,6 +384,7 @@ Item {
                 barSpacing: root.barSpacing
                 barConfig: root.barConfig
                 blurBarWindow: root.blurBarWindow
+                sectionAvailablePrimarySize: root.sectionAvailablePrimarySize
                 isFirst: index === 0
                 isLast: index === centerRepeater.count - 1
                 sectionSpacing: parent.itemSpacing

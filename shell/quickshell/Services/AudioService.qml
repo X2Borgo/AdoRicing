@@ -58,7 +58,10 @@ Singleton {
         return SessionData.deviceMaxVolumes[name] ?? 100;
     }
 
+    readonly property int wheelVolumeStep: SettingsData.audioWheelScrollAmount
+
     signal micMuteChanged
+    signal micVolumeChanged
     signal audioOutputCycled(string deviceName, string deviceIcon)
     signal deviceAliasChanged(string nodeName, string newAlias)
     signal wireplumberReloadStarted
@@ -156,19 +159,28 @@ Singleton {
         return false;
     }
 
-    function cycleAudioOutput() {
+    function cycleAudioOutputDirection(forward) {
         const sinks = getAvailableSinks();
         if (sinks.length < 2)
             return null;
 
         const currentName = root.sink?.name ?? "";
         const currentIndex = sinks.findIndex(s => s.name === currentName);
-        const nextIndex = (currentIndex + 1) % sinks.length;
+        let nextIndex;
+        if (forward) {
+            nextIndex = (currentIndex + 1) % sinks.length;
+        } else {
+            nextIndex = (currentIndex - 1 + sinks.length) % sinks.length;
+        }
         const nextSink = sinks[nextIndex];
         setDefaultSinkByName(nextSink.name);
         const name = displayName(nextSink);
         audioOutputCycled(name, sinkIcon(nextSink));
         return name;
+    }
+
+    function cycleAudioOutput() {
+        return cycleAudioOutputDirection(true);
     }
 
     function getDeviceAlias(nodeName) {
@@ -199,6 +211,10 @@ Singleton {
         updated[nodeName] = trimmedAlias;
         deviceAliases = updated;
 
+        const btDevice = BluetoothService.deviceForNodeName(nodeName);
+        if (btDevice)
+            btDevice.name = trimmedAlias;
+
         writeWireplumberConfig();
         deviceAliasChanged(nodeName, trimmedAlias);
         return true;
@@ -214,6 +230,11 @@ Singleton {
         const updated = Object.assign({}, deviceAliases);
         delete updated[nodeName];
         deviceAliases = updated;
+
+        // Empty BlueZ alias write resets to the device's real name.
+        const btDevice = BluetoothService.deviceForNodeName(nodeName);
+        if (btDevice)
+            btDevice.name = "";
 
         writeWireplumberConfig();
         deviceAliasChanged(nodeName, "");
@@ -397,6 +418,14 @@ EOFCONFIG
         }
     }
 
+    Connections {
+        target: root.source?.audio ?? null
+
+        function onMutedChanged() {
+            root.micMuteChanged();
+        }
+    }
+
     function checkGsettings() {
         Proc.runCommand("checkGsettings", ["sh", "-c", "gsettings get org.gnome.desktop.sound theme-name 2>/dev/null"], (output, exitCode) => {
             gsettingsAvailable = (exitCode === 0);
@@ -570,38 +599,42 @@ EOFCONFIG
         return MprisController.activePlayer?.isPlaying ?? false;
     }
 
+    function shouldMuteForMedia() {
+        return SettingsData.muteSoundsWhenMediaPlaying && isMediaPlaying();
+    }
+
     function playVolumeChangeSound() {
-        if (!soundsAvailable || !volumeChangeSound || notificationsAudioMuted || isMediaPlaying())
+        if (!soundsAvailable || !volumeChangeSound || notificationsAudioMuted || shouldMuteForMedia())
             return;
         volumeChangeSound.play();
     }
 
     function playPowerPlugSound() {
-        if (!soundsAvailable || !powerPlugSound || notificationsAudioMuted || isMediaPlaying())
+        if (!soundsAvailable || !powerPlugSound || notificationsAudioMuted || shouldMuteForMedia())
             return;
         powerPlugSound.play();
     }
 
     function playPowerUnplugSound() {
-        if (!soundsAvailable || !powerUnplugSound || notificationsAudioMuted || isMediaPlaying())
+        if (!soundsAvailable || !powerUnplugSound || notificationsAudioMuted || shouldMuteForMedia())
             return;
         powerUnplugSound.play();
     }
 
     function playNormalNotificationSound() {
-        if (!soundsAvailable || !normalNotificationSound || SessionData.doNotDisturb || notificationsAudioMuted || isMediaPlaying())
+        if (!soundsAvailable || !normalNotificationSound || SessionData.doNotDisturb || notificationsAudioMuted || shouldMuteForMedia())
             return;
         normalNotificationSound.play();
     }
 
     function playCriticalNotificationSound() {
-        if (!soundsAvailable || !criticalNotificationSound || SessionData.doNotDisturb || notificationsAudioMuted || isMediaPlaying())
+        if (!soundsAvailable || !criticalNotificationSound || SessionData.doNotDisturb || notificationsAudioMuted || shouldMuteForMedia())
             return;
         criticalNotificationSound.play();
     }
 
     function playLoginSound() {
-        if (!soundsAvailable || !loginSound || notificationsAudioMuted || isMediaPlaying()) {
+        if (!soundsAvailable || !loginSound || notificationsAudioMuted || shouldMuteForMedia()) {
             return;
         }
         loginSound.play();
@@ -809,11 +842,32 @@ EOFCONFIG
     function setVolume(percentage) {
         if (!root.sink?.audio)
             return "No audio sink available";
+        if (isNaN(percentage))
+            return "Invalid percentage";
 
         const maxVol = root.sinkMaxVolume;
         const clampedVolume = Math.max(0, Math.min(maxVol, percentage));
         root.sink.audio.volume = clampedVolume / 100;
         return `Volume set to ${clampedVolume}%`;
+    }
+
+    function outputVolumeStep(step) {
+        const parsed = parseInt(step || "5");
+        return isNaN(parsed) ? 5 : Math.max(0, parsed);
+    }
+
+    function adjustDefaultSinkVolume(step, direction) {
+        const audio = root.sink.audio;
+        const maxVol = root.sinkMaxVolume;
+        const stepValue = outputVolumeStep(step);
+        const currentVolume = Math.round(audio.volume * 100);
+        const newVolume = Math.max(0, Math.min(maxVol, currentVolume + direction * stepValue));
+
+        if (audio.muted)
+            audio.muted = false;
+
+        audio.volume = newVolume / 100;
+        return newVolume;
     }
 
     function toggleMute() {
@@ -825,6 +879,28 @@ EOFCONFIG
         return root.sink.audio.muted ? "Audio muted" : "Audio unmuted";
     }
 
+    function handleNodeVolumeWheel(node, wheelEvent) {
+        if (!node?.audio)
+            return;
+
+        SessionData.suppressOSDTemporarily();
+        const delta = wheelEvent.angleDelta.y;
+        if (delta === 0)
+            return;
+
+        const current = Math.round(node.audio.volume * 100);
+        const maxVol = getMaxVolumePercent(node);
+        const newVolume = delta > 0 ? Math.min(maxVol, current + root.wheelVolumeStep) : Math.max(0, current - root.wheelVolumeStep);
+
+        node.audio.muted = false;
+        node.audio.volume = newVolume / 100;
+
+        if (node === sink) {
+            playVolumeChangeSoundIfEnabled();
+        }
+        wheelEvent.accepted = true;
+    }
+
     function setMicVolume(percentage) {
         if (!root.source?.audio) {
             return "No audio source available";
@@ -832,6 +908,7 @@ EOFCONFIG
 
         const clampedVolume = Math.max(0, Math.min(100, percentage));
         root.source.audio.volume = clampedVolume / 100;
+        micVolumeChanged();
         return `Microphone volume set to ${clampedVolume}%`;
     }
 
@@ -842,6 +919,38 @@ EOFCONFIG
 
         root.source.audio.muted = !root.source.audio.muted;
         return root.source.audio.muted ? "Microphone muted" : "Microphone unmuted";
+    }
+
+    function incrementMicVolume(step) {
+        if (!root.source?.audio)
+            return "No audio source available";
+
+        if (root.source.audio.muted)
+            root.source.audio.muted = false;
+
+        const currentVolume = Math.round(root.source.audio.volume * 100);
+        const stepValue = parseInt(step || "5");
+        const newVolume = Math.max(0, Math.min(100, currentVolume + stepValue));
+
+        root.source.audio.volume = newVolume / 100;
+        micVolumeChanged();
+        return `Microphone volume increased to ${newVolume}%`;
+    }
+
+    function decrementMicVolume(step) {
+        if (!root.source?.audio)
+            return "No audio source available";
+
+        if (root.source.audio.muted)
+            root.source.audio.muted = false;
+
+        const currentVolume = Math.round(root.source.audio.volume * 100);
+        const stepValue = parseInt(step || "5");
+        const newVolume = Math.max(0, Math.min(100, currentVolume - stepValue));
+
+        root.source.audio.volume = newVolume / 100;
+        micVolumeChanged();
+        return `Microphone volume decreased to ${newVolume}%`;
     }
 
     IpcHandler {
@@ -855,15 +964,7 @@ EOFCONFIG
             if (!root.sink?.audio)
                 return "No audio sink available";
 
-            if (root.sink.audio.muted)
-                root.sink.audio.muted = false;
-
-            const maxVol = root.sinkMaxVolume;
-            const currentVolume = Math.round(root.sink.audio.volume * 100);
-            const stepValue = parseInt(step || "5");
-            const newVolume = Math.max(0, Math.min(maxVol, currentVolume + stepValue));
-
-            root.sink.audio.volume = newVolume / 100;
+            const newVolume = root.adjustDefaultSinkVolume(step, 1);
             return `Volume increased to ${newVolume}%`;
         }
 
@@ -871,15 +972,7 @@ EOFCONFIG
             if (!root.sink?.audio)
                 return "No audio sink available";
 
-            if (root.sink.audio.muted)
-                root.sink.audio.muted = false;
-
-            const maxVol = root.sinkMaxVolume;
-            const currentVolume = Math.round(root.sink.audio.volume * 100);
-            const stepValue = parseInt(step || "5");
-            const newVolume = Math.max(0, Math.min(maxVol, currentVolume - stepValue));
-
-            root.sink.audio.volume = newVolume / 100;
+            const newVolume = root.adjustDefaultSinkVolume(step, -1);
             return `Volume decreased to ${newVolume}%`;
         }
 
@@ -892,9 +985,7 @@ EOFCONFIG
         }
 
         function micmute(): string {
-            const result = root.toggleMicMute();
-            root.micMuteChanged();
-            return result;
+            return root.toggleMicMute();
         }
 
         function status(): string {
@@ -957,7 +1048,6 @@ EOFCONFIG
             return `Switched to: ${result}`;
         }
     }
-
     Connections {
         target: SettingsData
         function onUseSystemSoundThemeChanged() {

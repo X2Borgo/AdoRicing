@@ -57,32 +57,17 @@ const KEY_MAP = {
     16842802: "XF86Eject",
     16842791: "XF86Calculator",
     16842806: "XF86Explorer",
+    16777360: "XF86HomePage",
     16842794: "XF86HomePage",
+    16777362: "XF86Search",
     16777426: "XF86Search",
+    16777376: "XF86Mail",
     16777427: "XF86Mail",
+    16777377: "XF86AudioMedia",
+    16777419: "XF86Calculator",
+    16777429: "XF86Explorer",
     16777442: "XF86Launch0",
     16777443: "XF86Launch1",
-    33: "1",
-    64: "2",
-    35: "3",
-    36: "4",
-    37: "5",
-    94: "6",
-    38: "7",
-    42: "8",
-    40: "9",
-    41: "0",
-    60: "Comma",
-    62: "Period",
-    63: "Slash",
-    58: "Semicolon",
-    34: "Apostrophe",
-    123: "BracketLeft",
-    125: "BracketRight",
-    124: "Backslash",
-    95: "Minus",
-    43: "Equal",
-    126: "grave",
     196: "Adiaeresis",
     214: "Odiaeresis",
     220: "Udiaeresis",
@@ -120,7 +105,94 @@ const KEY_MAP = {
     161: "exclamdown"
 };
 
-function xkbKeyFromQtKey(qk) {
+// Preserve unshifted symbols from the active layout
+const SYMBOL_KEYSYM = {
+    33: "exclam",
+    34: "quotedbl",
+    35: "numbersign",
+    36: "dollar",
+    37: "percent",
+    38: "ampersand",
+    40: "parenleft",
+    41: "parenright",
+    42: "asterisk",
+    43: "plus",
+    58: "colon",
+    60: "less",
+    62: "greater",
+    63: "question",
+    64: "at",
+    94: "asciicircum",
+    95: "underscore",
+    123: "braceleft",
+    124: "bar",
+    125: "braceright",
+    126: "asciitilde"
+};
+
+// Preserve the existing shifted-US physical-key mapping
+const SHIFTED_US_FALLBACK = {
+    33: "1",
+    34: "Apostrophe",
+    35: "3",
+    36: "4",
+    37: "5",
+    38: "7",
+    40: "9",
+    41: "0",
+    42: "8",
+    43: "Equal",
+    58: "Semicolon",
+    60: "Comma",
+    62: "Period",
+    63: "Slash",
+    64: "2",
+    94: "6",
+    95: "Minus",
+    123: "BracketLeft",
+    124: "Backslash",
+    125: "BracketRight",
+    126: "grave"
+};
+
+// Numpad (keypad) keys. Qt reuses the same Qt::Key_* values for the numpad and
+// the main rows/nav cluster; only Qt.KeypadModifier distinguishes them. niri and
+// the other compositors bind against the xkb KP_* keysym names, so we must emit
+// those instead of the collapsed twin. With NumLock off the numpad sends the
+// navigation keysyms (KP_Home, KP_End, ...); with NumLock on it sends KP_0..KP_9
+// (handled by the digit range in xkbKeyFromQtKey). Operators/Enter are the same
+// in both states.
+const KP_MAP = {
+    16777232: "KP_Home",
+    16777235: "KP_Up",
+    16777238: "KP_Prior",
+    16777234: "KP_Left",
+    16777227: "KP_Begin",
+    16777236: "KP_Right",
+    16777233: "KP_End",
+    16777237: "KP_Down",
+    16777239: "KP_Next",
+    16777222: "KP_Insert",
+    16777223: "KP_Delete",
+    16777221: "KP_Enter",
+    43: "KP_Add",
+    45: "KP_Subtract",
+    42: "KP_Multiply",
+    47: "KP_Divide",
+    46: "KP_Decimal"
+};
+
+function xkbKeyFromQtKey(qk, isKeypad, hasShift) {
+    if (isKeypad) {
+        if (qk >= 48 && qk <= 57)
+            return "KP_" + (qk - 48);
+        if (KP_MAP[qk])
+            return KP_MAP[qk];
+    }
+    if (!hasShift && SYMBOL_KEYSYM[qk])
+        return SYMBOL_KEYSYM[qk];
+    if (hasShift && SHIFTED_US_FALLBACK[qk])
+        return SHIFTED_US_FALLBACK[qk];
     if (qk >= 65 && qk <= 90)
         return String.fromCharCode(qk);
     if (qk >= 97 && qk <= 122)
@@ -129,6 +201,10 @@ function xkbKeyFromQtKey(qk) {
         return String.fromCharCode(qk);
     if (qk >= 16777264 && qk <= 16777298)
         return "F" + (qk - 16777264 + 1);
+    if (qk >= 16777378 && qk <= 16777387)
+        return "XF86Launch" + (qk - 16777378);
+    if (qk >= 16777388 && qk <= 16777393)
+        return "XF86Launch" + String.fromCharCode(65 + qk - 16777388);
     return KEY_MAP[qk] || "";
 }
 
@@ -149,23 +225,42 @@ function formatToken(mods, key) {
     return (mods.length ? mods.join("+") + "+" : "") + key;
 }
 
-function normalizeKeyCombo(keyCombo) {
-    if (!keyCombo)
-        return "";
-    return keyCombo.toLowerCase().replace(/\bmod\b/g, "super").replace(/\bsuper\b/g, "super");
+function canonicalModifier(modifier) {
+    var normalized = (modifier || "").toLowerCase();
+    if (normalized === "control")
+        return "ctrl";
+    if (normalized === "win")
+        return "super";
+    return normalized;
 }
 
-function getConflictingBinds(keyCombo, currentAction, allBinds) {
+function withSymbolicMod(mods, modKey) {
+    var configuredMod = canonicalModifier(modKey);
+    if (!configuredMod)
+        return mods;
+    return mods.map(function (modifier) {
+        return canonicalModifier(modifier) === configuredMod ? "Mod" : modifier;
+    });
+}
+
+function normalizeKeyCombo(keyCombo, modKey) {
+    if (!keyCombo)
+        return "";
+    var configuredMod = canonicalModifier(modKey) || "super";
+    return keyCombo.toLowerCase().replace(/\bmod\b/g, configuredMod).replace(/\bcontrol\b/g, "ctrl").replace(/\bwin\b/g, "super");
+}
+
+function getConflictingBinds(keyCombo, currentAction, allBinds, modKey) {
     if (!keyCombo)
         return [];
     var conflicts = [];
-    var normalizedKey = normalizeKeyCombo(keyCombo);
+    var normalizedKey = normalizeKeyCombo(keyCombo, modKey);
     for (var i = 0; i < allBinds.length; i++) {
         var bind = allBinds[i];
         if (bind.action === currentAction)
             continue;
         for (var k = 0; k < bind.keys.length; k++) {
-            if (normalizeKeyCombo(bind.keys[k].key) === normalizedKey) {
+            if (normalizeKeyCombo(bind.keys[k].key, modKey) === normalizedKey) {
                 conflicts.push({
                     action: bind.action,
                     desc: bind.desc || bind.action

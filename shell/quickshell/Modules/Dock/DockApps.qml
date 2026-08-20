@@ -15,6 +15,7 @@ Item {
     property bool isVertical: false
     property var dockScreen: null
     property real iconSize: 40
+    property bool usesOverlayLayer: false
     property int draggedIndex: -1
     property int dropTargetIndex: -1
     property bool suppressShiftAnimation: false
@@ -478,6 +479,8 @@ Item {
 
                 delegate: Item {
                     id: delegateItem
+                    required property var modelData
+                    required property int index
 
                     property var dockButton: {
                         switch (itemData.type) {
@@ -572,7 +575,7 @@ Item {
                         visible: itemData.type === "separator"
                         width: root.isVertical ? root.iconSize * 0.5 : 2
                         height: root.isVertical ? 2 : root.iconSize * 0.5
-                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                        color: Theme.outlineHeavy
                         radius: 1
                         anchors.centerIn: parent
                     }
@@ -598,7 +601,7 @@ Item {
                         height: delegateItem.height
                         actualIconSize: root.iconSize
                         dockApps: root
-                        index: model.index
+                        index: delegateItem.index
                     }
 
                     DockTrashButton {
@@ -623,7 +626,7 @@ Item {
                         appData: itemData
                         contextMenu: root.contextMenu
                         dockApps: root
-                        index: model.index
+                        index: delegateItem.index
                         parentDockScreen: root.dockScreen
                         showWindowTitle: itemData?.type === "window" || itemData?.type === "grouped"
                         windowTitle: {

@@ -1,8 +1,10 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import Quickshell.Services.SystemTray
+import Quickshell.Services.UPower
 import qs.Common
 import qs.Services
 import qs.Modules.Settings.DisplayConfig
@@ -55,6 +57,93 @@ Item {
         return currentBar;
     }
 
+    readonly property var defaultAppMimeTypes: ({
+            browser: "x-scheme-handler/https",
+            fileManager: "inode/directory",
+            textEditor: "text/plain",
+            imageViewer: "image/png",
+            videoPlayer: "video/mp4",
+            musicPlayer: "audio/mpeg",
+            pdfReader: "application/pdf",
+            mail: "x-scheme-handler/mailto",
+            calendar: "x-scheme-handler/calendar"
+        })
+
+    function launchDesktopId(desktopId, appName) {
+        if (!desktopId || desktopId.length === 0) {
+            log.warn("No default app configured for:", appName);
+            return false;
+        }
+
+        let entry = DesktopEntries.heuristicLookup(desktopId);
+        if (!entry && desktopId.endsWith(".desktop")) {
+            entry = DesktopEntries.heuristicLookup(desktopId.slice(0, -8));
+        }
+        if (!entry) {
+            log.warn("Default app desktop entry not found:", desktopId, "for:", appName);
+            return false;
+        }
+
+        SessionService.launchDesktopEntry(entry);
+        AppUsageHistoryData.addAppUsage(entry);
+        return true;
+    }
+
+    function launchDefaultMimeApp(appName, mimeType) {
+        DMSService.sendRequest("mime.getDefault", {
+            "mimeType": mimeType
+        }, response => {
+            if (response.error) {
+                log.warn("Failed to resolve default app:", appName, response.error);
+                return;
+            }
+            const result = response.result || {};
+            root.launchDesktopId(result.desktopId || "", appName);
+        });
+
+        return `DEFAULTAPP_LAUNCH_REQUESTED: ${appName}`;
+    }
+
+    IpcHandler {
+        function browser(): string {
+            return root.launchDefaultMimeApp("browser", root.defaultAppMimeTypes.browser);
+        }
+
+        function fileManager(): string {
+            return root.launchDefaultMimeApp("fileManager", root.defaultAppMimeTypes.fileManager);
+        }
+
+        function textEditor(): string {
+            return root.launchDefaultMimeApp("textEditor", root.defaultAppMimeTypes.textEditor);
+        }
+
+        function imageViewer(): string {
+            return root.launchDefaultMimeApp("imageViewer", root.defaultAppMimeTypes.imageViewer);
+        }
+
+        function videoPlayer(): string {
+            return root.launchDefaultMimeApp("videoPlayer", root.defaultAppMimeTypes.videoPlayer);
+        }
+
+        function musicPlayer(): string {
+            return root.launchDefaultMimeApp("musicPlayer", root.defaultAppMimeTypes.musicPlayer);
+        }
+
+        function pdfReader(): string {
+            return root.launchDefaultMimeApp("pdfReader", root.defaultAppMimeTypes.pdfReader);
+        }
+
+        function mail(): string {
+            return root.launchDefaultMimeApp("mail", root.defaultAppMimeTypes.mail);
+        }
+
+        function calendar(): string {
+            return root.launchDefaultMimeApp("calendar", root.defaultAppMimeTypes.calendar);
+        }
+
+        target: "defaultApp"
+    }
+
     IpcHandler {
         function open() {
             root.powerMenuModalLoader.active = true;
@@ -90,8 +179,10 @@ Item {
     IpcHandler {
         function open(): string {
             root.processListModalLoader.active = true;
-            if (root.processListModalLoader.item)
-                root.processListModalLoader.item.show();
+            Qt.callLater(() => {
+                if (root.processListModalLoader.item)
+                    root.processListModalLoader.item.show();
+            });
 
             return "PROCESSLIST_OPEN_SUCCESS";
         }
@@ -105,16 +196,20 @@ Item {
 
         function toggle(): string {
             root.processListModalLoader.active = true;
-            if (root.processListModalLoader.item)
-                root.processListModalLoader.item.toggle();
+            Qt.callLater(() => {
+                if (root.processListModalLoader.item)
+                    root.processListModalLoader.item.toggle();
+            });
 
             return "PROCESSLIST_TOGGLE_SUCCESS";
         }
 
         function focusOrToggle(): string {
             root.processListModalLoader.active = true;
-            if (root.processListModalLoader.item)
-                root.processListModalLoader.item.focusOrToggle();
+            Qt.callLater(() => {
+                if (root.processListModalLoader.item)
+                    root.processListModalLoader.item.focusOrToggle();
+            });
 
             return "PROCESSLIST_FOCUS_OR_TOGGLE_SUCCESS";
         }
@@ -162,17 +257,36 @@ Item {
     }
 
     IpcHandler {
-        function resolveTabIndex(tab: string): int {
+        // Screenshot region-select handshake
+        function begin(): string {
+            PopoutManager.screenshotActive = true;
+            return "SCREENSHOT_MODE_ON";
+        }
+
+        function end(): string {
+            PopoutManager.screenshotActive = false;
+            return "SCREENSHOT_MODE_OFF";
+        }
+
+        target: "screenshot"
+    }
+
+    IpcHandler {
+        function _resolveTabId(tab) {
             switch ((tab || "").toLowerCase()) {
             case "media":
-                return 1;
+                return "media";
             case "wallpaper":
-                return 2;
+                return "wallpaper";
             case "weather":
-                return SettingsData.weatherEnabled ? 3 : 0;
+                return "weather";
             default:
-                return 0;
+                return "overview";
             }
+        }
+
+        function resolveTabIndex(tab: string): int {
+            return SettingsData.dashTabIndexForId(_resolveTabId(tab));
         }
 
         function open(tab: string): string {
@@ -180,16 +294,16 @@ Item {
             if (!bar)
                 return "DASH_OPEN_FAILED";
 
-            const tabIndex = resolveTabIndex(tab);
+            const tabId = _resolveTabId(tab);
             const dash = root.dankDashPopoutLoader.item;
             if (dash && dash.shouldBeVisible && dash.triggerScreen?.name === bar.screen?.name) {
-                dash.currentTabIndex = tabIndex;
+                dash.requestTab(tabId);
                 if (dash.updateSurfacePosition)
                     dash.updateSurfacePosition();
                 return "DASH_OPEN_SUCCESS";
             }
 
-            if (!bar.triggerDashTab(tabIndex))
+            if (!bar.triggerDashTab(tabId))
                 return "DASH_OPEN_FAILED";
 
             return "DASH_OPEN_SUCCESS";
@@ -211,7 +325,7 @@ Item {
 
             const bar = root.getPreferredBar("clockButtonRef") || root.getPreferredBar();
             if (bar) {
-                if (!bar.triggerDashTab(resolveTabIndex(tab)))
+                if (!bar.triggerDashTab(_resolveTabId(tab)))
                     return "DASH_TOGGLE_FAILED";
                 return "DASH_TOGGLE_SUCCESS";
             }
@@ -233,8 +347,8 @@ Item {
                 const focusedWs = I3.workspaces.values.find(ws => ws.focused === true);
                 return focusedWs?.monitor?.name || "";
             }
-            if (CompositorService.isDwl && DwlService.activeOutput) {
-                return DwlService.activeOutput;
+            if (CompositorService.isMango && MangoService.activeOutput) {
+                return MangoService.activeOutput;
             }
             return "";
         }
@@ -269,6 +383,10 @@ Item {
         }
 
         function open(): string {
+            if (PopoutService.notepadResolvedMode === "popout") {
+                PopoutService.openNotepadPopout();
+                return "NOTEPAD_OPEN_SUCCESS";
+            }
             var instance = getActiveNotepadInstance();
             if (instance) {
                 instance.show();
@@ -277,7 +395,27 @@ Item {
             return "NOTEPAD_OPEN_FAILED";
         }
 
+        function openFile(path: string): string {
+            if (!path)
+                return open();
+            if (PopoutService.notepadResolvedMode === "popout") {
+                PopoutService.openNotepadPopoutWithFile(path);
+                return "NOTEPAD_OPEN_FILE_SUCCESS";
+            }
+            var instance = getActiveNotepadInstance();
+            if (instance) {
+                instance.show();
+                instance.loadedItem?.openExternalFile(path);
+                return "NOTEPAD_OPEN_FILE_SUCCESS";
+            }
+            return "NOTEPAD_OPEN_FILE_FAILED";
+        }
+
         function close(): string {
+            if (PopoutService.notepadResolvedMode === "popout") {
+                PopoutService.notepadPopout?.hide();
+                return "NOTEPAD_CLOSE_SUCCESS";
+            }
             var instance = getActiveNotepadInstance();
             if (instance) {
                 instance.hide();
@@ -287,6 +425,10 @@ Item {
         }
 
         function toggle(): string {
+            if (PopoutService.notepadResolvedMode === "popout") {
+                PopoutService.toggleNotepadPopout();
+                return "NOTEPAD_TOGGLE_SUCCESS";
+            }
             var instance = getActiveNotepadInstance();
             if (instance) {
                 instance.toggle();
@@ -389,9 +531,7 @@ Item {
         }
 
         function next(): void {
-            if (MprisController.activePlayer && MprisController.activePlayer.canGoNext) {
-                MprisController.activePlayer.next();
-            }
+            MprisController.next();
         }
 
         function stop(): void {
@@ -580,12 +720,13 @@ Item {
         target: "hypr"
     }
 
+    // ! TODO - remove for v1.6
     IpcHandler {
         function wallpaper(): string {
             const bar = root.getPreferredBar("clockButtonRef") || root.getPreferredBar();
             if (bar) {
                 bar.triggerWallpaperBrowser();
-                return "SUCCESS: Toggled wallpaper browser";
+                return "WARN; deprecated, use dms ipc call dash toggle wallpaper instead";
             }
             return "ERROR: Failed to toggle wallpaper browser";
         }
@@ -840,7 +981,7 @@ Item {
 
         function tabs(): string {
             if (!PopoutService.settingsModal)
-                return "wallpaper\ntheme\ntypography\ntime_weather\nsounds\ndankbar\ndankbar_settings\ndankbar_widgets\nworkspaces\nmedia_player\nnotifications\nosd\nrunning_apps\nupdater\ndock\nlauncher\nkeybinds\ndisplays\nnetwork\nprinters\nlock_screen\npower_sleep\nplugins\nabout";
+                return "wallpaper\ntheme\ntypography\ntime_weather\nsounds\ndankbar\ndankbar_settings\ndankbar_appearance\ndankbar_widgets\nframe\nworkspaces\ncompositor\nmedia_player\nnotifications\nosd\nrunning_apps\nupdater\ndock\nlauncher\nkeybinds\ndisplays\nnetwork\nnetwork_status\nnetwork_ethernet\nnetwork_wifi\nnetwork_vpn\nprinters\nlock_screen\npower_sleep\nplugins\nabout";
             var modal = PopoutService.settingsModal;
             var ids = [];
             var structure = modal.sidebar?.categoryStructure ?? [];
@@ -862,6 +1003,10 @@ Item {
 
         function get(key: string): string {
             return JSON.stringify(SettingsData?.[key]);
+        }
+
+        function dump(): string {
+            return SettingsData.getCurrentSettingsJson();
         }
 
         function set(key: string, value: string): string {
@@ -1341,6 +1486,49 @@ Item {
     }
 
     IpcHandler {
+        function open(): string {
+            PopoutService.openSpotlightBar();
+            return "SPOTLIGHT_BAR_OPEN_SUCCESS";
+        }
+
+        function close(): string {
+            PopoutService.closeSpotlightBar();
+            return "SPOTLIGHT_BAR_CLOSE_SUCCESS";
+        }
+
+        function toggle(): string {
+            PopoutService.toggleSpotlightBar();
+            return "SPOTLIGHT_BAR_TOGGLE_SUCCESS";
+        }
+
+        function openWith(mode: string): string {
+            if (!mode)
+                return "SPOTLIGHT_BAR_OPEN_FAILED: No mode specified";
+            PopoutService.openSpotlightBarWithMode(mode);
+            return `SPOTLIGHT_BAR_OPEN_SUCCESS: ${mode}`;
+        }
+
+        function toggleWith(mode: string): string {
+            if (!mode)
+                return "SPOTLIGHT_BAR_TOGGLE_FAILED: No mode specified";
+            PopoutService.toggleSpotlightBarWithMode(mode);
+            return `SPOTLIGHT_BAR_TOGGLE_SUCCESS: ${mode}`;
+        }
+
+        function openQuery(query: string): string {
+            PopoutService.openSpotlightBarWithQuery(query);
+            return "SPOTLIGHT_BAR_OPEN_QUERY_SUCCESS";
+        }
+
+        function toggleQuery(query: string): string {
+            PopoutService.toggleSpotlightBarWithQuery(query);
+            return "SPOTLIGHT_BAR_TOGGLE_QUERY_SUCCESS";
+        }
+
+        target: "spotlight-bar"
+    }
+
+    IpcHandler {
         function info(message: string): string {
             if (!message)
                 return "ERROR: No message specified";
@@ -1641,8 +1829,8 @@ Item {
         }
 
         function open(): string {
-            if (!CompositorService.isNiri)
-                return "WINDOW_RULES_NIRI_ONLY";
+            if (!CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
+                return "WINDOW_RULES_UNSUPPORTED_COMPOSITOR";
             root.windowRuleModalLoader.active = true;
             if (root.windowRuleModalLoader.item) {
                 root.windowRuleModalLoader.item.show(getFocusedWindow());
@@ -1660,8 +1848,8 @@ Item {
         }
 
         function toggle(): string {
-            if (!CompositorService.isNiri)
-                return "WINDOW_RULES_NIRI_ONLY";
+            if (!CompositorService.isNiri && !CompositorService.isHyprland && !CompositorService.isMango)
+                return "WINDOW_RULES_UNSUPPORTED_COMPOSITOR";
             root.windowRuleModalLoader.active = true;
             if (root.windowRuleModalLoader.item) {
                 if (root.windowRuleModalLoader.item.visible) {
@@ -1776,6 +1964,36 @@ Item {
     }
 
     IpcHandler {
+        target: "mic"
+
+        function setvolume(percentage: string): string {
+            return AudioService.setMicVolume(parseInt(percentage));
+        }
+
+        function increment(step: string): string {
+            return AudioService.incrementMicVolume(step);
+        }
+
+        function decrement(step: string): string {
+            return AudioService.decrementMicVolume(step);
+        }
+
+        function mute(): string {
+            return AudioService.toggleMicMute();
+        }
+
+        function status(): string {
+            if (!AudioService.source || !AudioService.source.audio) {
+                return "No audio source available";
+            }
+
+            const volume = Math.round(AudioService.source.audio.volume * 100);
+            const muteStatus = AudioService.source.audio.muted ? " (muted)" : "";
+            return `Microphone: ${volume}%${muteStatus}`;
+        }
+    }
+
+    IpcHandler {
         function findTrayItem(itemId: string): var {
             if (!itemId)
                 return null;
@@ -1825,5 +2043,74 @@ Item {
         }
 
         target: "tray"
+    }
+
+    IpcHandler {
+        function open(): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            PopoutService.openPowerProfileModal();
+            return "POWERPROFILE_OPEN_SUCCESS";
+        }
+
+        function close(): string {
+            PopoutService.closePowerProfileModal();
+            return "POWERPROFILE_CLOSE_SUCCESS";
+        }
+
+        function toggle(): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            PopoutService.togglePowerProfileModal();
+            return "POWERPROFILE_TOGGLE_SUCCESS";
+        }
+
+        function list(): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            return PowerProfileWatcher.availableProfiles.map(profile => PowerProfileWatcher.profileSlug(profile)).join("\n");
+        }
+
+        function status(): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            return PowerProfileWatcher.profileSlug(PowerProfiles.profile);
+        }
+
+        function set(profile: string): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            if (!profile)
+                return "ERROR: No profile specified";
+
+            const parsed = PowerProfileWatcher.parseProfileSlug(profile);
+            if (parsed === -1)
+                return "ERROR: Unknown power profile. Supported options: power-saver, balanced, performance";
+
+            if (parsed === PowerProfile.Performance && !PowerProfiles.hasPerformanceProfile)
+                return "ERROR: Performance profile not supported by hardware";
+
+            if (!PowerProfileWatcher.applyProfile(parsed))
+                return "ERROR: Failed to set power profile";
+
+            return "POWERPROFILE_SET_SUCCESS";
+        }
+
+        function cycle(): string {
+            if (!PowerProfileWatcher.available)
+                return "ERROR: power-profiles-daemon not available";
+
+            if (!PowerProfileWatcher.cycleProfile())
+                return "ERROR: Failed to set power profile";
+
+            return "POWERPROFILE_CYCLE_SUCCESS";
+        }
+
+        target: "powerprofile"
     }
 }

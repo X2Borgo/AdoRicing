@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Effects
-import Quickshell
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -130,7 +129,7 @@ Item {
                     title: I18n.tr("Multi-Monitor", "greeter feature card title")
                     description: I18n.tr("Per-screen config", "greeter feature card description")
                     onClicked: {
-                        const hasDisplayConfig = CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isDwl;
+                        const hasDisplayConfig = CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isMango;
                         PopoutService.openSettingsWithTab(hasDisplayConfig ? "display_config" : "display_widgets");
                     }
                 }
@@ -148,8 +147,7 @@ Item {
                     iconName: "tune"
                     title: I18n.tr("Control Center", "greeter feature card title")
                     description: I18n.tr("Quick system toggles", "greeter feature card description")
-                    // This is doing an IPC since its just easier and lazier to access the bar ref
-                    onClicked: Quickshell.execDetached(["dms", "ipc", "call", "control-center", "open"])
+                    onClicked: BarWidgetService.getBarWindowOnFocusedScreen()?.triggerControlCenter()
                 }
 
                 GreeterFeatureCard {

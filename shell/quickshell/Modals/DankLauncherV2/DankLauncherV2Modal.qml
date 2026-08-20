@@ -23,6 +23,8 @@ Item {
     readonly property bool frameOwnsConnectedChrome: impl.item ? (impl.item.frameOwnsConnectedChrome ?? false) : false
     readonly property string resolvedConnectedBarSide: impl.item ? (impl.item.resolvedConnectedBarSide ?? "") : ""
     readonly property bool launcherArcExtenderActive: impl.item ? (impl.item.launcherArcExtenderActive ?? false) : false
+    property bool triggerUsesOverlayLayer: false
+    property bool edgeHoverManaged: false
 
     signal dialogClosed
 
@@ -61,8 +63,8 @@ Item {
             impl.item.toggleWithMode(mode);
     }
 
-    readonly property bool useSpotlightBackend: SettingsData.connectedFrameModeActive ? SettingsData.frameUseSpotlightLauncher : SettingsData.launcherStyle === "spotlight"
-    readonly property var _desiredBackend: useSpotlightBackend ? spotlightComp : (SettingsData.connectedFrameModeActive ? connectedComp : standaloneComp)
+    readonly property bool useSpotlightBackend: !FrameTransitionState.effectiveConnectedFrameModeActive && SettingsData.launcherStyle === "spotlight"
+    readonly property var _desiredBackend: useSpotlightBackend ? spotlightComp : (FrameTransitionState.effectiveConnectedFrameModeActive ? connectedComp : standaloneComp)
     property var _resolvedBackend: null
 
     Component.onCompleted: _resolvedBackend = _desiredBackend
@@ -70,9 +72,6 @@ Item {
     Connections {
         target: SettingsData
         function onConnectedFrameModeActiveChanged() {
-            root._maybeResolveBackend();
-        }
-        function onFrameUseSpotlightLauncherChanged() {
             root._maybeResolveBackend();
         }
         function onLauncherStyleChanged() {
@@ -116,6 +115,7 @@ Item {
         if (!it)
             return;
         it.modalHandle = root;
+        it.triggerUsesOverlayLayer = Qt.binding(() => root.triggerUsesOverlayLayer);
     }
 
     Connections {

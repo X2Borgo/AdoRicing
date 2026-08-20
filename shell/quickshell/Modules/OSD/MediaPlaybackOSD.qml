@@ -4,6 +4,7 @@ import qs.Common
 import qs.Services
 import qs.Widgets
 import Quickshell.Services.Mpris
+import Quickshell.Widgets
 
 DankOSD {
     id: root
@@ -11,7 +12,7 @@ DankOSD {
     readonly property bool useVertical: isVerticalLayout
     readonly property var player: MprisController.activePlayer
 
-    osdWidth: useVertical ? (40 + Theme.spacingS * 2) : Math.min(280, Screen.width - Theme.spacingM * 2)
+    osdWidth: useVertical ? (40 + Theme.spacingS * 2) : Math.min(280, screenWidth - Theme.spacingM * 2)
     osdHeight: useVertical ? (Theme.iconSize * 2) : (40 + Theme.spacingS * 2)
     autoHideInterval: 3000
     enableMouseInteraction: true
@@ -22,7 +23,7 @@ DankOSD {
         if (!player) {
             _displayIcon = "music_note";
             iconDebounce.stop();
-            return;
+            return false;
         }
         let icon = "music_note";
         switch (player.playbackState) {
@@ -34,10 +35,13 @@ DankOSD {
             icon = "play_arrow";
             break;
         }
-        if (icon === _displayIcon)
-            return;
+        if (icon === _displayIcon) {
+            iconDebounce.stop();
+            return false;
+        }
         iconDebounce.pendingIcon = icon;
         iconDebounce.restart();
+        return true;
     }
 
     function togglePlaying() {
@@ -51,6 +55,29 @@ DankOSD {
     property string _displayArtist: ""
     property string _displayAlbum: ""
 
+    function _showPending() {
+        _pendingShow = false;
+        pendingShowFallback.stop();
+        show();
+    }
+
+    function _evaluateShow() {
+        // art url can land in a later metadata update than the title
+        if (TrackArtService.getArtworkUrl(player) === "") {
+            _pendingShow = true;
+            pendingShowFallback.interval = 600;
+            pendingShowFallback.restart();
+            return;
+        }
+        if (TrackArtService.artReadyFor(player) && artPreloader.status === Image.Ready) {
+            _showPending();
+            return;
+        }
+        _pendingShow = true;
+        pendingShowFallback.interval = 1500;
+        pendingShowFallback.restart();
+    }
+
     Timer {
         id: iconDebounce
         interval: 150
@@ -58,9 +85,20 @@ DankOSD {
         onTriggered: root._displayIcon = pendingIcon
     }
 
+    Timer {
+        id: pendingShowFallback
+        interval: 1500
+        onTriggered: {
+            if (!root._pendingShow)
+                return;
+            root._pendingShow = false;
+            root.show();
+        }
+    }
+
     Image {
         id: artPreloader
-        source: TrackArtService._bgArtSource
+        source: TrackArtService.resolvedArtUrl
         visible: false
         asynchronous: true
         cache: true
@@ -69,6 +107,7 @@ DankOSD {
     onPlayerChanged: {
         if (!player) {
             _pendingShow = false;
+            pendingShowFallback.stop();
             hide();
         }
     }
@@ -76,12 +115,19 @@ DankOSD {
     Connections {
         target: TrackArtService
         function onLoadingChanged() {
-            if (TrackArtService.loading || !root._pendingShow)
+            if (!root._pendingShow)
                 return;
-            if (!TrackArtService._bgArtSource || artPreloader.status === Image.Ready) {
-                root._pendingShow = false;
-                root.show();
+            if (TrackArtService.loading) {
+                pendingShowFallback.interval = 1500;
+                pendingShowFallback.restart();
+                return;
             }
+            if (!TrackArtService.resolvedArtUrl) {
+                root._showPending();
+                return;
+            }
+            if (TrackArtService.artReadyFor(root.player) && artPreloader.status === Image.Ready)
+                root._showPending();
         }
     }
 
@@ -93,8 +139,7 @@ DankOSD {
             switch (artPreloader.status) {
             case Image.Ready:
             case Image.Error:
-                root._pendingShow = false;
-                root.show();
+                root._showPending();
                 break;
             }
         }
@@ -111,30 +156,39 @@ DankOSD {
             if (MprisController.isFirefoxYoutubeHoverPreview(player))
                 return;
 
-            root._displayTitle = player.trackTitle || "";
-            root._displayArtist = player.trackArtist || "";
-            root._displayAlbum = player.trackAlbum || "";
+            const newTitle = player.trackTitle || "";
+            const newArtist = player.trackArtist || "";
+            const newAlbum = player.trackAlbum || "";
+            const trackChanged = newTitle !== root._displayTitle || newArtist !== root._displayArtist || newAlbum !== root._displayAlbum;
 
-            root.updatePlaybackIcon();
-            TrackArtService.loadArtwork(player.trackArtUrl);
+            root._displayTitle = newTitle;
+            root._displayArtist = newArtist;
+            root._displayAlbum = newAlbum;
 
-            if (!player.trackArtUrl || player.trackArtUrl === "") {
+            const iconChanged = root.updatePlaybackIcon();
+
+            // live streams re-emit metadata as mpris:length grows - ignore churn
+            if (!trackChanged && !iconChanged)
+                return;
+
+            // vertical layout has no art background
+            if (root.useVertical) {
                 root.show();
                 return;
             }
-            if (TrackArtService.loading) {
-                root._pendingShow = true;
+            if (trackChanged) {
+                root._evaluateShow();
                 return;
             }
-            if (!TrackArtService._bgArtSource || artPreloader.status === Image.Ready) {
+            if (!root._pendingShow)
                 root.show();
-                return;
-            }
-            root._pendingShow = true;
         }
 
         function onTrackArtUrlChanged() {
-            TrackArtService.loadArtwork(player.trackArtUrl);
+            handleUpdate();
+        }
+        function onMetadataChanged() {
+            handleUpdate();
         }
         function onIsPlayingChanged() {
             handleUpdate();
@@ -168,24 +222,25 @@ DankOSD {
             Item {
                 id: bgContainer
                 anchors.fill: parent
-                visible: TrackArtService._bgArtSource !== ""
+                visible: TrackArtService.resolvedArtUrl !== ""
 
                 Image {
                     id: bgImage
                     anchors.centerIn: parent
                     width: Math.max(parent.width, parent.height)
                     height: width
-                    source: TrackArtService._bgArtSource
+                    source: TrackArtService.resolvedArtUrl
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     cache: true
                     visible: false
                 }
 
-                Item {
-                    id: blurredBg
+                ClippingRectangle {
                     anchors.fill: parent
-                    visible: false
+                    radius: Theme.cornerRadius
+                    color: "transparent"
+                    opacity: 0.7
 
                     MultiEffect {
                         anchors.centerIn: parent
@@ -198,24 +253,6 @@ DankOSD {
                         saturation: -0.2
                         brightness: -0.25
                     }
-                }
-
-                Rectangle {
-                    id: bgMask
-                    anchors.fill: parent
-                    radius: Theme.cornerRadius
-                    visible: false
-                    layer.enabled: true
-                }
-
-                MultiEffect {
-                    anchors.fill: parent
-                    source: blurredBg
-                    maskEnabled: true
-                    maskSource: bgMask
-                    maskThresholdMin: 0.5
-                    maskSpreadAtMin: 1.0
-                    opacity: 0.7
                 }
 
                 Rectangle {
@@ -258,7 +295,7 @@ DankOSD {
                 x: parent.gap * 2 + Theme.iconSize
                 width: parent.width - Theme.iconSize - parent.gap * 3
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 3
+                spacing: Theme.spacingXXS
 
                 StyledText {
                     id: topText

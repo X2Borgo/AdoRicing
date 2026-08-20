@@ -1,7 +1,7 @@
 import QtCore
 import QtQuick
-import QtQuick.Effects
 import Quickshell
+import Quickshell.Widgets
 import qs.Common
 import qs.Modals.FileBrowser
 import qs.Services
@@ -18,13 +18,59 @@ Item {
     property var cachedIconThemes: SettingsData.availableIconThemes
     property var cachedCursorThemes: SettingsData.availableCursorThemes
     property var cachedMatugenSchemes: Theme.availableMatugenSchemes.map(option => option.label)
+    property var matugenSchemePreviews: ({})
+    property string matugenPreviewSource: ""
+    property real matugenPreviewContrast: 0
+    property string matugenPreviewRequestKey: ""
     property var installedRegistryThemes: []
     property var templateDetection: []
+    readonly property var neovimDarkBaseThemes: ["aquarium", "ashes", "aylin", "ayu_dark", "bearded-arc", "carbonfox", "catppuccin", "chadracula", "chadracula-evondev", "chadtain", "chocolate", "darcula-dark", "dark_horizon", "decay", "default-dark", "doomchad", "eldritch", "embark", "everblush", "everforest", "falcon", "flexoki", "flouromachine", "gatekeeper", "github_dark", "gruvbox", "gruvchad", "hiberbee", "horizon", "jabuti", "jellybeans", "kanagawa", "kanagawa-dragon", "material-darker", "material-deep-ocean", "melange", "midnight_breeze", "mito-laser", "monekai", "monochrome", "mountain", "neofusion", "nightfox", "nightlamp", "nightowl", "nord", "obsidian-ember", "oceanic-next", "onedark", "onenord", "oxocarbon", "palenight", "pastelDark", "pastelbeans", "penumbra_dark", "poimandres", "radium", "rosepine", "rxyhn", "scaryforest", "seoul256_dark", "solarized_dark", "solarized_osaka", "starlight", "sweetpastel", "tokyodark", "tokyonight", "tomorrow_night", "tundra", "vesper", "vscode_dark", "wombat", "yoru", "zenburn"]
+    readonly property var neovimLightBaseThemes: ["ayu_light", "blossom_light", "catppuccin-latte", "default-light", "everforest_light", "flex-light", "flexoki-light", "github_light", "gruvbox_light", "material-lighter", "nano-light", "oceanic-light", "one_light", "onenord_light", "penumbra_light", "rosepine-dawn", "seoul256_light", "solarized_light", "sunrise_breeze", "vscode_light"]
+    readonly property var matugenSchemeColorMap: {
+        const map = {};
+        const mode = SessionData.isLightMode ? "light" : "dark";
+        for (var i = 0; i < Theme.availableMatugenSchemes.length; i++) {
+            const option = Theme.availableMatugenSchemes[i];
+            const preview = matugenSchemePreviews[option.value];
+            if (preview?.[mode])
+                map[option.label] = preview[mode];
+        }
+        return map;
+    }
+    readonly property var widgetBackgroundOptions: [({
+                "value": "sth",
+                "label": I18n.tr("Overlay", "widget background color option"),
+                "previewColor": Theme.blend(Theme.surfaceContainerHigh, Theme.surfaceText, 0.24)
+            }), ({
+                "value": "s",
+                "label": I18n.tr("Surface", "widget background color option")
+            }), ({
+                "value": "sc",
+                "label": I18n.tr("Surface Container", "widget background color option")
+            }), ({
+                "value": "sch",
+                "label": I18n.tr("Surface High", "widget background color option")
+            }), ({
+                "value": "primaryContainer",
+                "label": I18n.tr("Primary Container", "widget background color option")
+            }), ({
+                "value": "secondaryContainer",
+                "label": I18n.tr("Secondary Container", "widget background color option")
+            }), ({
+                "value": "tertiaryContainer",
+                "label": I18n.tr("Tertiary Container", "widget background color option")
+            }), ({
+                "value": "custom",
+                "label": I18n.tr("Custom", "widget background color option")
+            })]
 
     property var cursorIncludeStatus: ({
             "exists": false,
-            "included": false
+            "included": false,
+            "configFormat": "",
+            "readOnly": false
         })
+    readonly property bool cursorReadOnly: CompositorService.isHyprland && cursorIncludeStatus.readOnly === true
     property bool checkingCursorInclude: false
     property bool fixingCursorInclude: false
 
@@ -45,7 +91,7 @@ Item {
                 "grepPattern": "dms.cursor",
                 "includeLine": "require(\"dms.cursor\")"
             };
-        case "dwl":
+        case "mango":
             return {
                 "configFile": configDir + "/mango/config.conf",
                 "cursorFile": configDir + "/mango/dms/cursor.conf",
@@ -59,24 +105,28 @@ Item {
 
     function checkCursorIncludeStatus() {
         const compositor = CompositorService.compositor;
-        if (compositor !== "niri" && compositor !== "hyprland" && compositor !== "dwl") {
+        if (compositor !== "niri" && compositor !== "hyprland" && compositor !== "mango") {
             cursorIncludeStatus = {
                 "exists": false,
-                "included": false
+                "included": false,
+                "configFormat": "",
+                "readOnly": false
             };
             return;
         }
 
         const filename = (compositor === "niri") ? "cursor.kdl" : ((compositor === "hyprland") ? "cursor.lua" : "cursor.conf");
-        const compositorArg = (compositor === "dwl") ? "mangowc" : compositor;
+        const compositorArg = (compositor === "mango") ? "mangowc" : compositor;
 
         checkingCursorInclude = true;
-        Proc.runCommand("check-cursor-include", ["dms", "config", "resolve-include", compositorArg, filename], (output, exitCode) => {
+        Proc.runCommand("check-cursor-include", [Proc.dmsBin, "config", "resolve-include", compositorArg, filename], (output, exitCode) => {
             checkingCursorInclude = false;
             if (exitCode !== 0) {
                 cursorIncludeStatus = {
                     "exists": false,
-                    "included": false
+                    "included": false,
+                    "configFormat": "",
+                    "readOnly": false
                 };
                 return;
             }
@@ -85,13 +135,19 @@ Item {
             } catch (e) {
                 cursorIncludeStatus = {
                     "exists": false,
-                    "included": false
+                    "included": false,
+                    "configFormat": "",
+                    "readOnly": false
                 };
             }
         });
     }
 
     function fixCursorInclude() {
+        if (cursorReadOnly) {
+            ToastService.showWarning(I18n.tr("Hyprland conf mode"), I18n.tr("This install is still using hyprland.conf. Run dms setup to migrate before editing cursor settings."), "dms setup", "hyprland-migration");
+            return;
+        }
         const paths = getCursorConfigPaths();
         if (!paths)
             return;
@@ -135,9 +191,9 @@ Item {
         return Theme.warning;
     }
 
-    function openBlurBorderColorPicker() {
+    function openSurfaceBorderColorPicker() {
         PopoutService.colorPickerModal.selectedColor = SettingsData.blurBorderCustomColor ?? "#ffffff";
-        PopoutService.colorPickerModal.pickerTitle = I18n.tr("Blur Border Color");
+        PopoutService.colorPickerModal.pickerTitle = I18n.tr("Surface Border Color");
         PopoutService.colorPickerModal.onColorSelectedCallback = function (color) {
             SettingsData.set("blurBorderCustomColor", color.toString());
         };
@@ -153,6 +209,12 @@ Item {
         PopoutService.colorPickerModal.show();
     }
 
+    function warnIfMissingQtTheme() {
+        if (Quickshell.env("QT_QPA_PLATFORMTHEME") === "gtk3" || Quickshell.env("QT_QPA_PLATFORMTHEME") === "qt6ct" || Quickshell.env("QT_QPA_PLATFORMTHEME_QT6") === "qt6ct")
+            return;
+        ToastService.showError(I18n.tr("Missing Environment Variables", "qt theme env error title"), I18n.tr("You need to set either:\nQT_QPA_PLATFORMTHEME=gtk3 OR\nQT_QPA_PLATFORMTHEME=qt6ct\nas environment variables, and then restart the shell.\n\nqt6ct requires qt6ct-kde to be installed.", "qt theme env error body"));
+    }
+
     function formatThemeAutoTime(isoString) {
         if (!isoString)
             return "";
@@ -166,6 +228,35 @@ Item {
         }
     }
 
+    function refreshMatugenSchemePreviews() {
+        if (!Theme.matugenAvailable)
+            return;
+        const sourceColor = Theme.getMatugenColor("source_color", Theme.primary).toString();
+        const contrast = SettingsData.matugenContrast ?? 0;
+        const requestKey = sourceColor + "|" + contrast;
+        if (sourceColor === matugenPreviewSource && contrast === matugenPreviewContrast && Object.keys(matugenSchemePreviews).length > 0)
+            return;
+        if (requestKey === matugenPreviewRequestKey)
+            return;
+        matugenPreviewRequestKey = requestKey;
+
+        Proc.runCommand("", [Proc.dmsBin, "matugen", "preview", "--source-color", sourceColor, "--contrast", contrast.toString()], (output, exitCode) => {
+            if (requestKey !== themeColorsTab.matugenPreviewRequestKey)
+                return;
+            if (exitCode !== 0) {
+                themeColorsTab.matugenPreviewRequestKey = "";
+                return;
+            }
+            try {
+                themeColorsTab.matugenSchemePreviews = JSON.parse(output.trim());
+                themeColorsTab.matugenPreviewSource = sourceColor;
+                themeColorsTab.matugenPreviewContrast = contrast;
+            } catch (e) {
+                themeColorsTab.matugenPreviewRequestKey = "";
+            }
+        });
+    }
+
     Component.onCompleted: {
         SettingsData.detectAvailableIconThemes();
         SettingsData.detectAvailableCursorThemes();
@@ -173,15 +264,16 @@ Item {
             DMSService.listInstalledThemes();
         if (PopoutService.pendingThemeInstall)
             Qt.callLater(() => showThemeBrowser());
-        Proc.runCommand("template-check", ["dms", "matugen", "check"], (output, exitCode) => {
+        Proc.runCommand("template-check", [Proc.dmsBin, "matugen", "check"], (output, exitCode) => {
             if (exitCode !== 0)
                 return;
             try {
                 themeColorsTab.templateDetection = JSON.parse(output.trim());
             } catch (e) {}
         });
-        if (CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isDwl)
+        if (CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isMango)
             checkCursorIncludeStatus();
+        refreshMatugenSchemePreviews();
     }
 
     Connections {
@@ -196,6 +288,23 @@ Item {
         function onPendingThemeInstallChanged() {
             if (PopoutService.pendingThemeInstall)
                 showThemeBrowser();
+        }
+    }
+
+    Connections {
+        target: Theme
+        function onMatugenColorsChanged() {
+            themeColorsTab.refreshMatugenSchemePreviews();
+        }
+        function onMatugenAvailableChanged() {
+            themeColorsTab.refreshMatugenSchemePreviews();
+        }
+    }
+
+    Connections {
+        target: SettingsData
+        function onMatugenContrastChanged() {
+            themeColorsTab.refreshMatugenSchemePreviews();
         }
     }
 
@@ -413,28 +522,27 @@ Item {
                                 radius: Theme.cornerRadius
                                 color: Theme.surfaceVariant
 
-                                Image {
+                                ClippingRectangle {
                                     anchors.fill: parent
                                     anchors.margins: 1
-                                    source: {
-                                        var wp = Theme.wallpaperPath;
-                                        if (!wp || wp === "" || wp.startsWith("#"))
-                                            return "";
-                                        if (wp.startsWith("file://"))
-                                            wp = wp.substring(7);
-                                        return "file://" + wp.split('/').map(s => encodeURIComponent(s)).join('/');
-                                    }
-                                    fillMode: Image.PreserveAspectCrop
-                                    visible: Theme.wallpaperPath && !Theme.wallpaperPath.startsWith("#")
-                                    sourceSize.width: 120
-                                    sourceSize.height: 120
-                                    asynchronous: true
-                                    layer.enabled: true
-                                    layer.effect: MultiEffect {
-                                        maskEnabled: true
-                                        maskSource: autoWallpaperMask
-                                        maskThresholdMin: 0.5
-                                        maskSpreadAtMin: 1
+                                    radius: Theme.cornerRadius - 1
+                                    color: "transparent"
+
+                                    Image {
+                                        anchors.fill: parent
+                                        source: {
+                                            var wp = Theme.wallpaperPath;
+                                            if (!wp || wp === "" || wp.startsWith("#"))
+                                                return "";
+                                            if (wp.startsWith("file://"))
+                                                wp = wp.substring(7);
+                                            return "file://" + wp.split('/').map(s => encodeURIComponent(s)).join('/');
+                                        }
+                                        fillMode: Image.PreserveAspectCrop
+                                        visible: Theme.wallpaperPath && !Theme.wallpaperPath.startsWith("#")
+                                        sourceSize.width: 120
+                                        sourceSize.height: 120
+                                        asynchronous: true
                                     }
                                 }
 
@@ -442,18 +550,8 @@ Item {
                                     anchors.fill: parent
                                     anchors.margins: 1
                                     radius: Theme.cornerRadius - 1
-                                    color: Theme.wallpaperPath && Theme.wallpaperPath.startsWith("#") ? Theme.wallpaperPath : "transparent"
+                                    color: Theme.wallpaperPath && Theme.wallpaperPath.startsWith("#") ? Theme.wallpaperPath : Theme.withAlpha(Theme.wallpaperPath, 0)
                                     visible: Theme.wallpaperPath && Theme.wallpaperPath.startsWith("#")
-                                }
-
-                                Rectangle {
-                                    id: autoWallpaperMask
-                                    anchors.fill: parent
-                                    anchors.margins: 1
-                                    radius: Theme.cornerRadius - 1
-                                    color: "black"
-                                    visible: false
-                                    layer.enabled: true
                                 }
 
                                 DankIcon {
@@ -514,6 +612,7 @@ Item {
                             text: I18n.tr("Matugen Palette")
                             description: I18n.tr("Select the palette algorithm used for wallpaper-based colors")
                             options: cachedMatugenSchemes
+                            optionColorMap: matugenSchemeColorMap
                             currentValue: Theme.getMatugenScheme(SettingsData.matugenScheme).label
                             enabled: Theme.matugenAvailable
                             opacity: enabled ? 1 : 0.4
@@ -570,7 +669,7 @@ Item {
                                 buttonSize: 48
                                 iconName: "folder_open"
                                 iconSize: Theme.iconSize
-                                backgroundColor: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                backgroundColor: Theme.primaryHover
                                 iconColor: Theme.primary
                                 onClicked: fileBrowserModal.open()
                             }
@@ -1371,7 +1470,7 @@ Item {
                                 width: parent.width - Theme.spacingM * 2
 
                                 Column {
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     width: (parent.width - Theme.spacingL * 2) / 3
                                     anchors.verticalCenter: parent.verticalCenter
 
@@ -1406,7 +1505,7 @@ Item {
                                 }
 
                                 Column {
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     width: (parent.width - Theme.spacingL * 2) / 3
                                     anchors.verticalCenter: parent.verticalCenter
 
@@ -1441,7 +1540,7 @@ Item {
                                 }
 
                                 Column {
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     width: (parent.width - Theme.spacingL * 2) / 3
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: SessionData.themeModeAutoEnabled && SessionData.themeModeNextTransition
@@ -1511,10 +1610,10 @@ Item {
 
                 SettingsButtonGroupRow {
                     tab: "theme"
-                    tags: ["widget", "style", "colorful", "default"]
+                    tags: ["widget", "text", "style", "colorful", "default"]
                     settingKey: "widgetColorMode"
-                    text: I18n.tr("Widget Style")
-                    description: I18n.tr("Change bar appearance")
+                    text: I18n.tr("Widget Text Style")
+                    description: I18n.tr("Choose neutral or accent-colored widget text")
                     model: [I18n.tr("Default", "widget style option"), I18n.tr("Colorful", "widget style option")]
                     currentIndex: SettingsData.widgetColorMode === "colorful" ? 1 : 0
                     onSelectionChanged: (index, selected) => {
@@ -1524,38 +1623,41 @@ Item {
                     }
                 }
 
-                SettingsButtonGroupRow {
+                ColorDropdownRow {
                     tab: "theme"
-                    tags: ["widget", "background", "color"]
+                    tags: ["widget", "background", "color", "surface", "material"]
                     settingKey: "widgetBackgroundColor"
                     text: I18n.tr("Widget Background Color")
                     description: I18n.tr("Choose the background color for widgets")
-                    model: ["sth", "s", "sc", "sch"]
-                    buttonHeight: 20
-                    minButtonWidth: 32
-                    buttonPadding: Theme.spacingS
-                    checkIconSize: Theme.iconSizeSmall - 2
-                    textSize: Theme.fontSizeSmall - 2
-                    spacing: 1
-                    currentIndex: {
-                        switch (SettingsData.widgetBackgroundColor) {
-                        case "sth":
-                            return 0;
-                        case "s":
-                            return 1;
-                        case "sc":
-                            return 2;
-                        case "sch":
-                            return 3;
-                        default:
-                            return 0;
-                        }
-                    }
-                    onSelectionChanged: (index, selected) => {
-                        if (!selected)
-                            return;
-                        const colorOptions = ["sth", "s", "sc", "sch"];
-                        SettingsData.set("widgetBackgroundColor", colorOptions[index]);
+                    dropdownWidth: 220
+                    options: themeColorsTab.widgetBackgroundOptions
+                    currentMode: SettingsData.widgetBackgroundColor
+                    customColor: SettingsData.widgetBackgroundCustomColor || "#6750A4"
+                    pickerTitle: I18n.tr("Widget Background Color")
+                    onModeSelected: mode => SettingsData.set("widgetBackgroundColor", mode)
+                    onCustomColorSelected: selectedColor => SettingsData.set("widgetBackgroundCustomColor", selectedColor.toString())
+                }
+
+                SettingsSliderRow {
+                    id: widgetBackgroundCustomStrengthSlider
+                    visible: SettingsData.widgetBackgroundColor === "custom"
+                    tab: "theme"
+                    tags: ["widget", "background", "color", "custom", "blend"]
+                    settingKey: "widgetBackgroundCustomStrength"
+                    text: I18n.tr("Custom Blend")
+                    description: I18n.tr("Blend between Surface High and the selected custom color")
+                    value: Math.round(SettingsData.widgetBackgroundCustomStrength * 100)
+                    minimum: 0
+                    maximum: 100
+                    unit: "%"
+                    defaultValue: 40
+                    onSliderValueChanged: newValue => SettingsData.set("widgetBackgroundCustomStrength", newValue / 100)
+
+                    Binding {
+                        target: widgetBackgroundCustomStrengthSlider
+                        property: "value"
+                        value: Math.round(SettingsData.widgetBackgroundCustomStrength * 100)
+                        restoreMode: Binding.RestoreBinding
                     }
                 }
 
@@ -1566,6 +1668,12 @@ Item {
                     text: I18n.tr("Control Center Tile Color")
                     description: I18n.tr("Active tile background and icon color", "control center tile color setting description")
                     options: [I18n.tr("Primary", "tile color option"), I18n.tr("Primary Container", "tile color option"), I18n.tr("Secondary", "tile color option"), I18n.tr("Surface Variant", "tile color option")]
+                    optionColorMap: ({
+                            [I18n.tr("Primary", "tile color option")]: Theme.roleColor("primary"),
+                            [I18n.tr("Primary Container", "tile color option")]: Theme.roleColor("primaryContainer"),
+                            [I18n.tr("Secondary", "tile color option")]: Theme.roleColor("secondary"),
+                            [I18n.tr("Surface Variant", "tile color option")]: Theme.roleColor("surfaceVariant")
+                        })
                     currentValue: {
                         switch (SettingsData.controlCenterTileColorMode) {
                         case "primaryContainer":
@@ -1598,6 +1706,12 @@ Item {
                     text: I18n.tr("Button Color")
                     description: I18n.tr("Color for primary action buttons")
                     options: [I18n.tr("Primary", "button color option"), I18n.tr("Primary Container", "button color option"), I18n.tr("Secondary", "button color option"), I18n.tr("Surface Variant", "button color option")]
+                    optionColorMap: ({
+                            [I18n.tr("Primary", "button color option")]: Theme.roleColor("primary"),
+                            [I18n.tr("Primary Container", "button color option")]: Theme.roleColor("primaryContainer"),
+                            [I18n.tr("Secondary", "button color option")]: Theme.roleColor("secondary"),
+                            [I18n.tr("Surface Variant", "button color option")]: Theme.roleColor("surfaceVariant")
+                        })
                     currentValue: {
                         switch (SettingsData.buttonColorMode) {
                         case "primaryContainer":
@@ -1622,20 +1736,12 @@ Item {
                         }
                     }
                 }
-
-                SettingsControlledByFrame {
-                    visible: themeColorsTab.connectedFrameModeActive
-                    parentModal: themeColorsTab.parentModal
-                    settingLabel: I18n.tr("Surface Opacity")
-                    reason: I18n.tr("Managed by Frame in Connected Mode")
-                }
-
                 SettingsSliderRow {
                     tab: "theme"
                     tags: ["surface", "popup", "transparency", "opacity", "modal"]
                     settingKey: "popupTransparency"
                     text: I18n.tr("Surface Opacity")
-                    description: I18n.tr("Controls opacity of all popouts, modals, and their content layers")
+                    description: I18n.tr("Controls opacity of shell surfaces, popouts, and modals")
                     visible: !themeColorsTab.connectedFrameModeActive
                     value: Math.round(SettingsData.popupTransparency * 100)
                     minimum: 0
@@ -1643,6 +1749,100 @@ Item {
                     unit: "%"
                     defaultValue: 100
                     onSliderValueChanged: newValue => SettingsData.set("popupTransparency", newValue / 100)
+                }
+
+                SettingsToggleRow {
+                    tab: "theme"
+                    tags: ["foreground", "layers", "contrast", "surface", "blur", "glass", "frosted"]
+                    settingKey: "blurForegroundLayers"
+                    text: I18n.tr("Foreground Layers")
+                    description: I18n.tr("Show foreground surfaces on panels for stronger contrast")
+                    checked: SettingsData.blurForegroundLayers ?? true
+                    onToggled: checked => SettingsData.set("blurForegroundLayers", checked)
+                }
+
+                SettingsSliderRow {
+                    tab: "theme"
+                    tags: ["foreground", "layers", "outline", "border", "cards", "widgets", "notifications", "control center"]
+                    settingKey: "blurLayerOutlineOpacity"
+                    text: I18n.tr("Layer Outline Opacity")
+                    description: I18n.tr("Controls outlines around foreground cards, pills, and notification cards")
+                    value: Math.round((SettingsData.blurLayerOutlineOpacity ?? 0.12) * 100)
+                    minimum: 0
+                    maximum: 40
+                    unit: "%"
+                    defaultValue: 12
+                    onSliderValueChanged: newValue => SettingsData.set("blurLayerOutlineOpacity", newValue / 100)
+                }
+
+                SettingsToggleRow {
+                    tab: "theme"
+                    tags: ["surface", "popup", "modal", "border", "outline", "edge"]
+                    settingKey: "blurBorderEnabled"
+                    text: I18n.tr("Surface Border Outline")
+                    description: I18n.tr("Outline around shell surfaces")
+                    checked: SettingsData.blurBorderEnabled ?? true
+                    onToggled: checked => SettingsData.set("blurBorderEnabled", checked)
+                }
+
+                SettingsDropdownRow {
+                    tab: "theme"
+                    tags: ["surface", "popup", "modal", "border", "outline", "edge"]
+                    settingKey: "blurBorderColor"
+                    text: I18n.tr("Surface Border Color")
+                    description: I18n.tr("Border color around popouts, modals, and other shell surfaces")
+                    visible: SettingsData.blurBorderEnabled ?? true
+                    options: [I18n.tr("Outline", "surface border color"), I18n.tr("Primary", "surface border color"), I18n.tr("Secondary", "surface border color"), I18n.tr("Text Color", "surface border color"), I18n.tr("Custom", "surface border color")]
+                    optionColorMap: ({
+                            [I18n.tr("Outline", "surface border color")]: Theme.outline,
+                            [I18n.tr("Primary", "surface border color")]: Theme.primary,
+                            [I18n.tr("Secondary", "surface border color")]: Theme.secondary,
+                            [I18n.tr("Text Color", "surface border color")]: Theme.surfaceText,
+                            [I18n.tr("Custom", "surface border color")]: SettingsData.blurBorderCustomColor ?? "#ffffff"
+                        })
+                    currentValue: {
+                        switch (SettingsData.blurBorderColor) {
+                        case "primary":
+                            return I18n.tr("Primary", "surface border color");
+                        case "secondary":
+                            return I18n.tr("Secondary", "surface border color");
+                        case "surfaceText":
+                            return I18n.tr("Text Color", "surface border color");
+                        case "custom":
+                            return I18n.tr("Custom", "surface border color");
+                        default:
+                            return I18n.tr("Outline", "surface border color");
+                        }
+                    }
+                    onValueChanged: value => {
+                        if (value === I18n.tr("Primary", "surface border color")) {
+                            SettingsData.set("blurBorderColor", "primary");
+                        } else if (value === I18n.tr("Secondary", "surface border color")) {
+                            SettingsData.set("blurBorderColor", "secondary");
+                        } else if (value === I18n.tr("Text Color", "surface border color")) {
+                            SettingsData.set("blurBorderColor", "surfaceText");
+                        } else if (value === I18n.tr("Custom", "surface border color")) {
+                            SettingsData.set("blurBorderColor", "custom");
+                            openSurfaceBorderColorPicker();
+                        } else {
+                            SettingsData.set("blurBorderColor", "outline");
+                        }
+                    }
+                }
+
+                SettingsSliderRow {
+                    tab: "theme"
+                    tags: ["surface", "popup", "modal", "border", "opacity"]
+                    settingKey: "blurBorderOpacity"
+                    text: I18n.tr("Surface Border Opacity")
+                    description: I18n.tr("Controls the outline of popouts, modals, and other shell surfaces")
+                    visible: SettingsData.blurBorderEnabled ?? true
+                    value: Math.round((SettingsData.blurBorderOpacity ?? 0.35) * 100)
+                    minimum: 0
+                    maximum: 100
+                    unit: "%"
+                    defaultValue: 35
+                    onSliderValueChanged: newValue => SettingsData.set("blurBorderOpacity", newValue / 100)
                 }
 
                 SettingsSliderRow {
@@ -1658,6 +1858,74 @@ Item {
                     defaultValue: 12
                     onSliderValueChanged: newValue => SettingsData.setCornerRadius(newValue)
                 }
+
+                SettingsControlledByFrame {
+                    visible: themeColorsTab.connectedFrameModeActive
+                    parentModal: themeColorsTab.parentModal
+                    settingLabel: I18n.tr("Surface Opacity")
+                    reason: I18n.tr("Managed by Frame in Connected Mode")
+                }
+            }
+
+            SettingsCard {
+                tab: "theme"
+                tags: ["blur", "background", "transparency", "glass", "frosted"]
+                title: I18n.tr("Background Blur")
+                settingKey: "blurEnabled"
+                iconName: "blur_on"
+
+                SettingsToggleRow {
+                    tab: "theme"
+                    tags: ["blur", "background", "transparency", "glass", "frosted"]
+                    settingKey: "blurEnabled"
+                    text: I18n.tr("Background Blur")
+                    description: !BlurService.available ? I18n.tr("Your compositor does not support background blur (ext-background-effect-v1)") : I18n.tr("Blur the background behind bars, popouts, modals, and notifications. Requires compositor support. Adjust Opacity accordingly.")
+                    checked: SettingsData.blurEnabled ?? false
+                    enabled: BlurService.available
+                    onToggled: checked => SettingsData.set("blurEnabled", checked)
+                }
+
+                Item {
+                    width: parent.width
+                    height: xrayHintRow.implicitHeight
+                    visible: CompositorService.isNiri || CompositorService.isHyprland
+
+                    Row {
+                        id: xrayHintRow
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        DankIcon {
+                            name: "info"
+                            size: Theme.iconSizeSmall
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            width: parent.width - Theme.iconSizeSmall - Theme.spacingS
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: I18n.tr("Xray options are in Compositor → Layout")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.primary
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: PopoutService.openSettingsWithTab("compositor_layout")
+                    }
+                }
+            }
+
+            SettingsCard {
+                tab: "theme"
+                tags: ["elevation", "shadow", "lift", "m3", "material"]
+                title: I18n.tr("Shadows")
+                settingKey: "m3ElevationEnabled"
+                iconName: "layers"
 
                 SettingsToggleRow {
                     tab: "theme"
@@ -1689,7 +1957,7 @@ Item {
                     tags: ["elevation", "shadow", "opacity", "transparency", "m3"]
                     settingKey: "m3ElevationOpacity"
                     text: I18n.tr("Shadow Opacity")
-                    description: I18n.tr("Controls the transparency of the shadow")
+                    description: I18n.tr("Controls the opacity of the shadow")
                     value: SettingsData.m3ElevationOpacity ?? 30
                     minimum: 0
                     maximum: 100
@@ -1706,6 +1974,13 @@ Item {
                     text: I18n.tr("Shadow Color")
                     description: I18n.tr("Base color for shadows (opacity is applied automatically)")
                     options: [I18n.tr("Default (Black)", "shadow color option"), I18n.tr("Text Color", "shadow color option"), I18n.tr("Primary", "shadow color option"), I18n.tr("Surface Variant", "shadow color option"), I18n.tr("Custom", "shadow color option")]
+                    optionColorMap: ({
+                            [I18n.tr("Default (Black)", "shadow color option")]: "#000000",
+                            [I18n.tr("Text Color", "shadow color option")]: Theme.surfaceText,
+                            [I18n.tr("Primary", "shadow color option")]: Theme.primary,
+                            [I18n.tr("Surface Variant", "shadow color option")]: Theme.surfaceVariant,
+                            [I18n.tr("Custom", "shadow color option")]: SettingsData.m3ElevationCustomColor ?? "#000000"
+                        })
                     currentValue: {
                         switch (SettingsData.m3ElevationColorMode) {
                         case "text":
@@ -1845,440 +2120,6 @@ Item {
 
             SettingsCard {
                 tab: "theme"
-                tags: ["blur", "background", "transparency", "glass", "frosted"]
-                title: I18n.tr("Background Blur")
-                settingKey: "blurEnabled"
-                iconName: "blur_on"
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["blur", "background", "transparency", "glass", "frosted"]
-                    settingKey: "blurEnabled"
-                    text: I18n.tr("Background Blur")
-                    description: !BlurService.available ? I18n.tr("Requires a newer version of Quickshell") : I18n.tr("Blur the background behind bars, popouts, modals, and notifications. Requires compositor support and configuration.")
-                    checked: SettingsData.blurEnabled ?? false
-                    enabled: BlurService.available
-                    onToggled: checked => SettingsData.set("blurEnabled", checked)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["blur", "foreground", "layers", "contrast", "glass", "frosted"]
-                    settingKey: "blurForegroundLayers"
-                    text: I18n.tr("Foreground Layers")
-                    description: I18n.tr("Show foreground surfaces on blurred panels for stronger contrast")
-                    checked: SettingsData.blurForegroundLayers ?? true
-                    visible: BlurService.available && (SettingsData.blurEnabled ?? false)
-                    enabled: BlurService.available
-                    onToggled: checked => SettingsData.set("blurForegroundLayers", checked)
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["blur", "foreground", "layers", "outline", "border", "cards", "widgets", "notifications", "control center"]
-                    settingKey: "blurLayerOutlineOpacity"
-                    text: I18n.tr("Layer Outline Opacity")
-                    description: I18n.tr("Controls outlines around blurred foreground cards, pills, and notification cards")
-                    visible: BlurService.available && (SettingsData.blurEnabled ?? false)
-                    value: Math.round((SettingsData.blurLayerOutlineOpacity ?? 0.12) * 100)
-                    minimum: 0
-                    maximum: 40
-                    unit: "%"
-                    defaultValue: 12
-                    onSliderValueChanged: newValue => SettingsData.set("blurLayerOutlineOpacity", newValue / 100)
-                }
-
-                SettingsDropdownRow {
-                    tab: "theme"
-                    tags: ["blur", "border", "outline", "edge"]
-                    settingKey: "blurBorderColor"
-                    text: I18n.tr("Blur Border Color")
-                    description: I18n.tr("Border color around blurred surfaces")
-                    visible: SettingsData.blurEnabled
-                    options: [I18n.tr("Outline", "blur border color"), I18n.tr("Primary", "blur border color"), I18n.tr("Secondary", "blur border color"), I18n.tr("Text Color", "blur border color"), I18n.tr("Custom", "blur border color")]
-                    currentValue: {
-                        switch (SettingsData.blurBorderColor) {
-                        case "primary":
-                            return I18n.tr("Primary", "blur border color");
-                        case "secondary":
-                            return I18n.tr("Secondary", "blur border color");
-                        case "surfaceText":
-                            return I18n.tr("Text Color", "blur border color");
-                        case "custom":
-                            return I18n.tr("Custom", "blur border color");
-                        default:
-                            return I18n.tr("Outline", "blur border color");
-                        }
-                    }
-                    onValueChanged: value => {
-                        if (value === I18n.tr("Primary", "blur border color")) {
-                            SettingsData.set("blurBorderColor", "primary");
-                        } else if (value === I18n.tr("Secondary", "blur border color")) {
-                            SettingsData.set("blurBorderColor", "secondary");
-                        } else if (value === I18n.tr("Text Color", "blur border color")) {
-                            SettingsData.set("blurBorderColor", "surfaceText");
-                        } else if (value === I18n.tr("Custom", "blur border color")) {
-                            SettingsData.set("blurBorderColor", "custom");
-                            openBlurBorderColorPicker();
-                        } else {
-                            SettingsData.set("blurBorderColor", "outline");
-                        }
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["blur", "border", "opacity"]
-                    settingKey: "blurBorderOpacity"
-                    text: I18n.tr("Blur Border Opacity")
-                    description: I18n.tr("Controls the outer edge of protocol-blurred windows")
-                    visible: SettingsData.blurEnabled
-                    value: Math.round((SettingsData.blurBorderOpacity ?? 0.35) * 100)
-                    minimum: 0
-                    maximum: 100
-                    unit: "%"
-                    defaultValue: 35
-                    onSliderValueChanged: newValue => SettingsData.set("blurBorderOpacity", newValue / 100)
-                }
-            }
-
-            SettingsCard {
-                tab: "theme"
-                tags: ["niri", "layout", "gaps", "radius", "window", "border"]
-                title: I18n.tr("Niri Layout Overrides").replace("Niri", "niri")
-                settingKey: "niriLayout"
-                iconName: "crop_square"
-                visible: CompositorService.isNiri
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["niri", "gaps", "override"]
-                    settingKey: "niriLayoutGapsOverrideEnabled"
-                    text: I18n.tr("Override Gaps")
-                    description: I18n.tr("Use custom gaps instead of bar spacing")
-                    checked: SettingsData.niriLayoutGapsOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            const currentGaps = Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4));
-                            SettingsData.set("niriLayoutGapsOverride", currentGaps);
-                            return;
-                        }
-                        SettingsData.set("niriLayoutGapsOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["niri", "gaps", "override"]
-                    settingKey: "niriLayoutGapsOverride"
-                    text: I18n.tr("Window Gaps")
-                    description: I18n.tr("Space between windows")
-                    visible: SettingsData.niriLayoutGapsOverride >= 0
-                    value: Math.max(0, SettingsData.niriLayoutGapsOverride)
-                    minimum: 0
-                    maximum: 50
-                    unit: "px"
-                    defaultValue: Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4))
-                    onSliderValueChanged: newValue => SettingsData.set("niriLayoutGapsOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["niri", "radius", "override"]
-                    settingKey: "niriLayoutRadiusOverrideEnabled"
-                    text: I18n.tr("Override Corner Radius")
-                    description: I18n.tr("Use custom window radius instead of theme radius")
-                    checked: SettingsData.niriLayoutRadiusOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("niriLayoutRadiusOverride", SettingsData.cornerRadius);
-                            return;
-                        }
-                        SettingsData.set("niriLayoutRadiusOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["niri", "radius", "override"]
-                    settingKey: "niriLayoutRadiusOverride"
-                    text: I18n.tr("Window Corner Radius")
-                    description: I18n.tr("Rounded corners for windows")
-                    visible: SettingsData.niriLayoutRadiusOverride >= 0
-                    value: Math.max(0, SettingsData.niriLayoutRadiusOverride)
-                    minimum: 0
-                    maximum: 100
-                    unit: "px"
-                    defaultValue: SettingsData.cornerRadius
-                    onSliderValueChanged: newValue => SettingsData.set("niriLayoutRadiusOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["niri", "border", "override"]
-                    settingKey: "niriLayoutBorderSizeEnabled"
-                    text: I18n.tr("Override Border Size")
-                    description: I18n.tr("Use custom border/focus-ring width")
-                    checked: SettingsData.niriLayoutBorderSize >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("niriLayoutBorderSize", 2);
-                            return;
-                        }
-                        SettingsData.set("niriLayoutBorderSize", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["niri", "border", "override"]
-                    settingKey: "niriLayoutBorderSize"
-                    text: I18n.tr("Border Size")
-                    description: I18n.tr("Width of window border and focus ring")
-                    visible: SettingsData.niriLayoutBorderSize >= 0
-                    value: Math.max(0, SettingsData.niriLayoutBorderSize)
-                    minimum: 0
-                    maximum: 10
-                    unit: "px"
-                    defaultValue: 2
-                    onSliderValueChanged: newValue => SettingsData.set("niriLayoutBorderSize", newValue)
-                }
-            }
-
-            SettingsCard {
-                tab: "theme"
-                tags: ["hyprland", "layout", "gaps", "radius", "window", "border", "rounding"]
-                title: I18n.tr("Hyprland Layout Overrides")
-                settingKey: "hyprlandLayout"
-                iconName: "crop_square"
-                visible: CompositorService.isHyprland
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["hyprland", "gaps", "override"]
-                    settingKey: "hyprlandLayoutGapsOverrideEnabled"
-                    text: I18n.tr("Override Gaps")
-                    description: I18n.tr("Use custom gaps instead of bar spacing")
-                    checked: SettingsData.hyprlandLayoutGapsOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            const currentGaps = Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4));
-                            SettingsData.set("hyprlandLayoutGapsOverride", currentGaps);
-                            return;
-                        }
-                        SettingsData.set("hyprlandLayoutGapsOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["hyprland", "gaps", "override"]
-                    settingKey: "hyprlandLayoutGapsOverride"
-                    text: I18n.tr("Window Gaps")
-                    description: I18n.tr("Space between windows (gaps_in and gaps_out)")
-                    visible: SettingsData.hyprlandLayoutGapsOverride >= 0
-                    value: Math.max(0, SettingsData.hyprlandLayoutGapsOverride)
-                    minimum: 0
-                    maximum: 50
-                    unit: "px"
-                    defaultValue: Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4))
-                    onSliderValueChanged: newValue => SettingsData.set("hyprlandLayoutGapsOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["hyprland", "radius", "override", "rounding"]
-                    settingKey: "hyprlandLayoutRadiusOverrideEnabled"
-                    text: I18n.tr("Override Corner Radius")
-                    description: I18n.tr("Use custom window rounding instead of theme radius")
-                    checked: SettingsData.hyprlandLayoutRadiusOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("hyprlandLayoutRadiusOverride", SettingsData.cornerRadius);
-                            return;
-                        }
-                        SettingsData.set("hyprlandLayoutRadiusOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["hyprland", "radius", "override", "rounding"]
-                    settingKey: "hyprlandLayoutRadiusOverride"
-                    text: I18n.tr("Window Rounding")
-                    description: I18n.tr("Rounded corners for windows (decoration.rounding)")
-                    visible: SettingsData.hyprlandLayoutRadiusOverride >= 0
-                    value: Math.max(0, SettingsData.hyprlandLayoutRadiusOverride)
-                    minimum: 0
-                    maximum: 100
-                    unit: "px"
-                    defaultValue: SettingsData.cornerRadius
-                    onSliderValueChanged: newValue => SettingsData.set("hyprlandLayoutRadiusOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["hyprland", "border", "override"]
-                    settingKey: "hyprlandLayoutBorderSizeEnabled"
-                    text: I18n.tr("Override Border Size")
-                    description: I18n.tr("Use custom border size")
-                    checked: SettingsData.hyprlandLayoutBorderSize >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("hyprlandLayoutBorderSize", 2);
-                            return;
-                        }
-                        SettingsData.set("hyprlandLayoutBorderSize", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["hyprland", "border", "override"]
-                    settingKey: "hyprlandLayoutBorderSize"
-                    text: I18n.tr("Border Size")
-                    description: I18n.tr("Width of window border (general.border_size)")
-                    visible: SettingsData.hyprlandLayoutBorderSize >= 0
-                    value: Math.max(0, SettingsData.hyprlandLayoutBorderSize)
-                    minimum: 0
-                    maximum: 10
-                    unit: "px"
-                    defaultValue: 2
-                    onSliderValueChanged: newValue => SettingsData.set("hyprlandLayoutBorderSize", newValue)
-                }
-            }
-
-            SettingsCard {
-                tab: "theme"
-                tags: ["mangowc", "mango", "dwl", "layout", "gaps", "radius", "window", "border"]
-                title: I18n.tr("MangoWC Layout Overrides")
-                settingKey: "mangoLayout"
-                iconName: "crop_square"
-                visible: CompositorService.isDwl
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "gaps", "override"]
-                    settingKey: "mangoLayoutGapsOverrideEnabled"
-                    text: I18n.tr("Override Gaps")
-                    description: I18n.tr("Use custom gaps instead of bar spacing")
-                    checked: SettingsData.mangoLayoutGapsOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            const currentGaps = Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4));
-                            SettingsData.set("mangoLayoutGapsOverride", currentGaps);
-                            return;
-                        }
-                        SettingsData.set("mangoLayoutGapsOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "gaps", "override"]
-                    settingKey: "mangoLayoutGapsOverride"
-                    text: I18n.tr("Window Gaps")
-                    description: I18n.tr("Space between windows (gappih/gappiv/gappoh/gappov)")
-                    visible: SettingsData.mangoLayoutGapsOverride >= 0
-                    value: Math.max(0, SettingsData.mangoLayoutGapsOverride)
-                    minimum: 0
-                    maximum: 50
-                    unit: "px"
-                    defaultValue: Math.max(4, (SettingsData.barConfigs[0]?.spacing ?? 4))
-                    onSliderValueChanged: newValue => SettingsData.set("mangoLayoutGapsOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "radius", "override"]
-                    settingKey: "mangoLayoutRadiusOverrideEnabled"
-                    text: I18n.tr("Override Corner Radius")
-                    description: I18n.tr("Use custom window radius instead of theme radius")
-                    checked: SettingsData.mangoLayoutRadiusOverride >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("mangoLayoutRadiusOverride", SettingsData.cornerRadius);
-                            return;
-                        }
-                        SettingsData.set("mangoLayoutRadiusOverride", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "radius", "override"]
-                    settingKey: "mangoLayoutRadiusOverride"
-                    text: I18n.tr("Window Corner Radius")
-                    description: I18n.tr("Rounded corners for windows (border_radius)")
-                    visible: SettingsData.mangoLayoutRadiusOverride >= 0
-                    value: Math.max(0, SettingsData.mangoLayoutRadiusOverride)
-                    minimum: 0
-                    maximum: 100
-                    unit: "px"
-                    defaultValue: SettingsData.cornerRadius
-                    onSliderValueChanged: newValue => SettingsData.set("mangoLayoutRadiusOverride", newValue)
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "border", "override"]
-                    settingKey: "mangoLayoutBorderSizeEnabled"
-                    text: I18n.tr("Override Border Size")
-                    description: I18n.tr("Use custom border size")
-                    checked: SettingsData.mangoLayoutBorderSize >= 0
-                    onToggled: checked => {
-                        if (checked) {
-                            SettingsData.set("mangoLayoutBorderSize", 2);
-                            return;
-                        }
-                        SettingsData.set("mangoLayoutBorderSize", -1);
-                    }
-                }
-
-                SettingsSliderRow {
-                    tab: "theme"
-                    tags: ["mangowc", "mango", "border", "override"]
-                    settingKey: "mangoLayoutBorderSize"
-                    text: I18n.tr("Border Size")
-                    description: I18n.tr("Width of window border (borderpx)")
-                    visible: SettingsData.mangoLayoutBorderSize >= 0
-                    value: Math.max(0, SettingsData.mangoLayoutBorderSize)
-                    minimum: 0
-                    maximum: 10
-                    unit: "px"
-                    defaultValue: 2
-                    onSliderValueChanged: newValue => SettingsData.set("mangoLayoutBorderSize", newValue)
-                }
-            }
-
-            SettingsCard {
-                tab: "theme"
-                tags: ["modal", "darken", "background", "overlay"]
-                title: I18n.tr("Modal Background")
-                settingKey: "modalBackground"
-                iconName: "layers"
-
-                SettingsControlledByFrame {
-                    visible: themeColorsTab.frameModeActive
-                    parentModal: themeColorsTab.parentModal
-                    settingLabel: I18n.tr("Darken Modal Background")
-                    reason: I18n.tr("Disabled by Frame Mode")
-                }
-
-                SettingsToggleRow {
-                    tab: "theme"
-                    tags: ["modal", "darken", "background", "overlay"]
-                    settingKey: "modalDarkenBackground"
-                    text: I18n.tr("Darken Modal Background")
-                    description: I18n.tr("Show darkened overlay behind modal dialogs")
-                    visible: !themeColorsTab.frameModeActive
-                    checked: SettingsData.modalDarkenBackground
-                    onToggled: checked => SettingsData.set("modalDarkenBackground", checked)
-                }
-            }
-
-            SettingsCard {
-                tab: "theme"
                 tags: ["applications", "portal", "dark", "terminal"]
                 title: I18n.tr("Applications")
                 settingKey: "applications"
@@ -2311,7 +2152,7 @@ Item {
                 title: I18n.tr("Cursor Theme")
                 settingKey: "cursorTheme"
                 iconName: "mouse"
-                visible: CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isDwl
+                visible: CompositorService.isNiri || CompositorService.isHyprland || CompositorService.isMango
 
                 Column {
                     width: parent.width
@@ -2320,27 +2161,27 @@ Item {
                     StyledRect {
                         id: cursorWarningBox
                         width: parent.width
-                        height: cursorWarningContent.implicitHeight + Theme.spacingM * 2
+                        height: cursorWarningContent.implicitHeight + Theme.spacingL * 2
                         radius: Theme.cornerRadius
 
-                        readonly property bool showError: themeColorsTab.cursorIncludeStatus.exists && !themeColorsTab.cursorIncludeStatus.included
-                        readonly property bool showSetup: !themeColorsTab.cursorIncludeStatus.exists && !themeColorsTab.cursorIncludeStatus.included
+                        readonly property bool showLegacy: themeColorsTab.cursorReadOnly
+                        readonly property bool showSetup: !showLegacy && !themeColorsTab.cursorIncludeStatus.included
 
-                        color: (showError || showSetup) ? Theme.withAlpha(Theme.warning, 0.15) : "transparent"
-                        border.color: (showError || showSetup) ? Theme.withAlpha(Theme.warning, 0.3) : "transparent"
+                        color: (showLegacy || showSetup) ? Theme.withAlpha(Theme.primary, 0.15) : Theme.withAlpha(Theme.primary, 0)
+                        border.color: (showLegacy || showSetup) ? Theme.withAlpha(Theme.primary, 0.3) : Theme.withAlpha(Theme.primary, 0)
                         border.width: 1
-                        visible: (showError || showSetup) && !themeColorsTab.checkingCursorInclude
+                        visible: (showLegacy || showSetup) && !themeColorsTab.checkingCursorInclude
 
                         Row {
                             id: cursorWarningContent
                             anchors.fill: parent
-                            anchors.margins: Theme.spacingM
+                            anchors.margins: Theme.spacingL
                             spacing: Theme.spacingM
 
                             DankIcon {
                                 name: "warning"
                                 size: Theme.iconSize
-                                color: Theme.warning
+                                color: Theme.primary
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
@@ -2350,27 +2191,42 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
 
                                 StyledText {
-                                    text: cursorWarningBox.showSetup ? I18n.tr("Cursor Config Not Configured") : I18n.tr("Cursor Include Missing")
+                                    text: {
+                                        if (cursorWarningBox.showLegacy)
+                                            return I18n.tr("Hyprland conf mode");
+                                        if (cursorWarningBox.showSetup)
+                                            return I18n.tr("First Time Setup");
+                                        return "";
+                                    }
                                     font.pixelSize: Theme.fontSizeMedium
                                     font.weight: Font.Medium
-                                    color: Theme.warning
+                                    color: Theme.primary
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignLeft
                                 }
 
                                 StyledText {
-                                    text: cursorWarningBox.showSetup ? I18n.tr("Click 'Setup' to create cursor config and add include to your compositor config.") : I18n.tr("dms/cursor config exists but is not included. Cursor settings won't apply.")
+                                    text: {
+                                        if (cursorWarningBox.showLegacy)
+                                            return I18n.tr("This install is still using hyprland.conf. Run dms setup to migrate before editing cursor settings.");
+                                        if (cursorWarningBox.showSetup)
+                                            return I18n.tr("Click 'Setup' to create %1 and add include to your compositor config.").arg("dms/cursor");
+                                        return "";
+                                    }
                                     font.pixelSize: Theme.fontSizeSmall
                                     color: Theme.surfaceVariantText
                                     wrapMode: Text.WordWrap
                                     width: parent.width
+                                    horizontalAlignment: Text.AlignLeft
                                 }
                             }
 
                             DankButton {
                                 id: cursorFixButton
-                                visible: cursorWarningBox.showError || cursorWarningBox.showSetup
-                                text: themeColorsTab.fixingCursorInclude ? I18n.tr("Fixing...") : (cursorWarningBox.showSetup ? I18n.tr("Setup") : I18n.tr("Fix Now"))
-                                backgroundColor: Theme.warning
-                                textColor: Theme.background
+                                visible: !cursorWarningBox.showLegacy && cursorWarningBox.showSetup
+                                text: themeColorsTab.fixingCursorInclude ? I18n.tr("Setting up...") : I18n.tr("Setup")
+                                backgroundColor: Theme.primary
+                                textColor: Theme.primaryText
                                 enabled: !themeColorsTab.fixingCursorInclude
                                 anchors.verticalCenter: parent.verticalCenter
                                 onClicked: themeColorsTab.fixCursorInclude()
@@ -2406,6 +2262,17 @@ Item {
                         unit: "px"
                         defaultValue: 24
                         onSliderValueChanged: newValue => SettingsData.setCursorSize(newValue)
+                    }
+
+                    SettingsToggleRow {
+                        tab: "theme"
+                        tags: ["mango", "touchpad", "trackpad", "natural", "scrolling"]
+                        settingKey: "mangoTrackpadNaturalScrolling"
+                        text: I18n.tr("Natural Touchpad Scrolling")
+                        description: I18n.tr("Invert touchpad scroll direction")
+                        visible: CompositorService.isMango
+                        checked: SettingsData.mangoTrackpadNaturalScrolling
+                        onToggled: checked => SettingsData.set("mangoTrackpadNaturalScrolling", checked)
                     }
 
                     SettingsToggleRow {
@@ -2465,8 +2332,8 @@ Item {
                                 return SettingsData.cursorSettings.niri?.hideAfterInactiveMs || 0;
                             if (CompositorService.isHyprland)
                                 return SettingsData.cursorSettings.hyprland?.inactiveTimeout || 0;
-                            if (CompositorService.isDwl)
-                                return SettingsData.cursorSettings.dwl?.cursorHideTimeout || 0;
+                            if (CompositorService.isMango)
+                                return SettingsData.cursorSettings.mango?.cursorHideTimeout || 0;
                             return 0;
                         }
                         minimum: 0
@@ -2483,10 +2350,10 @@ Item {
                                 if (!updated.hyprland)
                                     updated.hyprland = {};
                                 updated.hyprland.inactiveTimeout = newValue;
-                            } else if (CompositorService.isDwl) {
-                                if (!updated.dwl)
-                                    updated.dwl = {};
-                                updated.dwl.cursorHideTimeout = newValue;
+                            } else if (CompositorService.isMango) {
+                                if (!updated.mango)
+                                    updated.mango = {};
+                                updated.mango.cursorHideTimeout = newValue;
                             }
                             SettingsData.set("cursorSettings", updated);
                         }
@@ -2501,22 +2368,67 @@ Item {
                 settingKey: "iconTheme"
                 iconName: "interests"
 
+                SettingsToggleRow {
+                    tab: "theme"
+                    tags: ["icon", "theme", "light", "dark", "mode"]
+                    settingKey: "iconThemePerMode"
+                    text: I18n.tr("Separate Light & Dark Themes")
+                    description: I18n.tr("Use different icon themes for light and dark mode")
+                    checked: SettingsData.iconThemePerMode
+                    onToggled: checked => SettingsData.setIconThemePerMode(checked)
+                }
+
                 SettingsDropdownRow {
                     tab: "theme"
                     tags: ["icon", "theme", "system"]
                     settingKey: "iconTheme"
                     text: I18n.tr("Icon Theme")
                     description: I18n.tr("DankShell & System Icons (requires restart)")
-                    currentValue: SettingsData.iconTheme
+                    visible: !SettingsData.iconThemePerMode
+                    currentValue: SettingsData.iconThemeDark
                     enableFuzzySearch: true
                     popupWidthOffset: 100
                     maxPopupHeight: 236
                     options: cachedIconThemes
                     onValueChanged: value => {
-                        SettingsData.setIconTheme(value);
-                        if (Quickshell.env("QT_QPA_PLATFORMTHEME") != "gtk3" && Quickshell.env("QT_QPA_PLATFORMTHEME") != "qt6ct" && Quickshell.env("QT_QPA_PLATFORMTHEME_QT6") != "qt6ct") {
-                            ToastService.showError(I18n.tr("Missing Environment Variables", "qt theme env error title"), I18n.tr("You need to set either:\nQT_QPA_PLATFORMTHEME=gtk3 OR\nQT_QPA_PLATFORMTHEME=qt6ct\nas environment variables, and then restart the shell.\n\nqt6ct requires qt6ct-kde to be installed.", "qt theme env error body"));
-                        }
+                        SettingsData.setIconThemeForMode(value, false);
+                        warnIfMissingQtTheme();
+                    }
+                }
+
+                SettingsDropdownRow {
+                    tab: "theme"
+                    tags: ["icon", "theme", "system", "dark"]
+                    settingKey: "iconThemeDark"
+                    text: I18n.tr("Dark Mode Icon Theme")
+                    description: I18n.tr("DankShell & System Icons (requires restart)")
+                    visible: SettingsData.iconThemePerMode
+                    currentValue: SettingsData.iconThemeDark
+                    enableFuzzySearch: true
+                    popupWidthOffset: 100
+                    maxPopupHeight: 236
+                    options: cachedIconThemes
+                    onValueChanged: value => {
+                        SettingsData.setIconThemeForMode(value, false);
+                        warnIfMissingQtTheme();
+                    }
+                }
+
+                SettingsDropdownRow {
+                    tab: "theme"
+                    tags: ["icon", "theme", "system", "light"]
+                    settingKey: "iconThemeLight"
+                    text: I18n.tr("Light Mode Icon Theme")
+                    description: I18n.tr("DankShell & System Icons (requires restart)")
+                    visible: SettingsData.iconThemePerMode
+                    currentValue: SettingsData.iconThemeLight
+                    enableFuzzySearch: true
+                    popupWidthOffset: 100
+                    maxPopupHeight: 236
+                    options: cachedIconThemes
+                    onValueChanged: value => {
+                        SettingsData.setIconThemeForMode(value, true);
+                        warnIfMissingQtTheme();
                     }
                 }
             }
@@ -2756,7 +2668,7 @@ Item {
                     description: "Base to derive dark theme from"
                     visible: neovimThemeToggle.visible && neovimThemeToggle.checked
                     currentValue: SettingsData.matugenTemplateNeovimSettings?.dark?.baseTheme ?? "github_dark"
-                    options: ["aquarium", "ashes", "aylin", "ayu_dark", "bearded-arc", "carbonfox", "catppuccin", "chadracula", "chadracula-evondev", "chadtain", "chocolate", "darcula-dark", "dark_horizon", "decay", "default-dark", "doomchad", "eldritch", "embark", "everblush", "everforest", "falcon", "flexoki", "flouromachine", "gatekeeper", "github_dark", "gruvbox", "gruvchad", "hiberbee", "horizon", "jabuti", "jellybeans", "kanagawa", "kanagawa-dragon", "material-darker", "material-deep-ocean", "melange", "midnight_breeze", "mito-laser", "monekai", "monochrome", "mountain", "neofusion", "nightfox", "nightlamp", "nightowl", "nord", "obsidian-ember", "oceanic-next", "onedark", "onenord", "oxocarbon", "palenight", "pastelDark", "pastelbeans", "penumbra_dark", "poimandres", "radium", "rosepine", "rxyhn", "scaryforest", "seoul256_dark", "solarized_dark", "solarized_osaka", "starlight", "sweetpastel", "tokyodark", "tokyonight", "tomorrow_night", "tundra", "vesper", "vscode_dark", "wombat", "yoru", "zenburn"]
+                    options: themeColorsTab.neovimDarkBaseThemes.concat(themeColorsTab.neovimLightBaseThemes)
                     enableFuzzySearch: true
                     onValueChanged: value => {
                         const settings = SettingsData.matugenTemplateNeovimSettings;
@@ -2773,7 +2685,7 @@ Item {
                     description: "Base to derive light theme from"
                     visible: neovimThemeToggle.visible && neovimThemeToggle.checked
                     currentValue: SettingsData.matugenTemplateNeovimSettings?.light?.baseTheme ?? "github_light"
-                    options: ["ayu_light", "blossom_light", "catppuccin-latte", "default-light", "everforest_light", "flex-light", "flexoki-light", "github_light", "gruvbox_light", "material-lighter", "nano-light", "oceanic-light", "one_light", "onenord_light", "penumbra_light", "rosepine-dawn", "seoul256_light", "solarized_light", "sunrise_breeze", "vscode_light"]
+                    options: themeColorsTab.neovimLightBaseThemes.concat(themeColorsTab.neovimDarkBaseThemes)
                     enableFuzzySearch: true
                     onValueChanged: value => {
                         const settings = SettingsData.matugenTemplateNeovimSettings;
@@ -2918,7 +2830,7 @@ Item {
                 width: parent.width
                 height: warningText.implicitHeight + Theme.spacingM * 2
                 radius: Theme.cornerRadius
-                color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.12)
+                color: Theme.warningHover
 
                 Row {
                     anchors.fill: parent
@@ -2959,14 +2871,14 @@ Item {
                         width: (parent.width - Theme.spacingM) / 2
                         height: 48
                         radius: Theme.cornerRadius
-                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                        color: Theme.primaryHover
 
                         Row {
                             anchors.centerIn: parent
                             spacing: Theme.spacingS
 
                             DankIcon {
-                                name: "folder"
+                                name: "settings"
                                 size: 16
                                 color: Theme.primary
                                 anchors.verticalCenter: parent.verticalCenter
@@ -2993,7 +2905,7 @@ Item {
                         width: (parent.width - Theme.spacingM) / 2
                         height: 48
                         radius: Theme.cornerRadius
-                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                        color: Theme.primaryHover
 
                         Row {
                             anchors.centerIn: parent

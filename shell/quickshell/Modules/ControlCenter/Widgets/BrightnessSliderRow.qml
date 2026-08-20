@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -31,8 +32,10 @@ Row {
         }
 
         if (screenName && screenName.length > 0) {
-            const pins = SettingsData.brightnessDevicePins || {};
-            const pinnedDevice = pins[screenName];
+            const screen = Quickshell.screens.find(s => s.name === screenName);
+            const pinKey = screen ? SettingsData.getScreenDisplayName(screen) : screenName;
+            const pins = CacheData.brightnessDevicePins || {};
+            const pinnedDevice = pins[pinKey];
             if (pinnedDevice && pinnedDevice.length > 0) {
                 const found = DisplayService.devices.find(dev => dev.name === pinnedDevice);
                 if (found) {
@@ -91,7 +94,7 @@ Row {
         height: Theme.iconSize + Theme.spacingS * 2
         anchors.verticalCenter: parent.verticalCenter
         radius: (Theme.iconSize + Theme.spacingS * 2) / 2
-        color: iconArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Theme.withAlpha(Theme.primary, 0)
+        color: iconArea.containsMouse ? Theme.primaryHover : Theme.withAlpha(Theme.primary, 0)
 
         DankRipple {
             id: iconRipple

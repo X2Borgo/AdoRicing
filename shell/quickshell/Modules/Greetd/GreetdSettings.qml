@@ -12,28 +12,38 @@ Singleton {
     id: root
     readonly property var log: Log.scoped("GreetdSettings")
 
-    readonly property string configPath: {
-        const greetCfgDir = Quickshell.env("DMS_GREET_CFG_DIR") || "/var/cache/dms-greeter";
-        return greetCfgDir + "/settings.json";
+    readonly property string _greeterCacheDir: Quickshell.env("DMS_GREET_CFG_DIR") || "/var/cache/dms-greeter"
+
+    property string configBaseDir: root._greeterCacheDir
+    readonly property string configPath: root.configBaseDir ? (root.configBaseDir + "/settings.json") : ""
+    readonly property string greeterWallpaperOverridePath: root.configBaseDir ? (root.configBaseDir + "/greeter_wallpaper_override.jpg") : ""
+
+    function setConfigBaseDir(dir) {
+        const next = dir || root._greeterCacheDir;
+        if (configBaseDir === next)
+            return;
+        configBaseDir = next;
+        settingsLoaded = false;
+        settingsFile.reload();
     }
 
-    readonly property string _greeterCacheDir: {
-        const i = root.configPath.lastIndexOf("/");
-        return i >= 0 ? root.configPath.substring(0, i) : "";
+    function resetConfigBaseDir() {
+        setConfigBaseDir(root._greeterCacheDir);
     }
-    readonly property string greeterWallpaperOverridePath: root._greeterCacheDir ? (root._greeterCacheDir + "/greeter_wallpaper_override.jpg") : ""
 
     property string currentThemeName: "purple"
     property bool settingsLoaded: false
     property string customThemeFile: ""
     property var registryThemeVariants: ({})
     property string matugenScheme: "scheme-tonal-spot"
-    property bool use24HourClock: true
+    property string clockFormat: "auto"
+    readonly property bool localeUses24Hour: {
+        const fmt = Qt.locale().timeFormat(Locale.ShortFormat).replace(/'[^']*'/g, "");
+        return !/[aA]/.test(fmt);
+    }
+    readonly property bool use24HourClock: clockFormat === "24h" ? true : (clockFormat === "12h" ? false : localeUses24Hour)
     property bool showSeconds: false
     property bool padHours12Hour: false
-    property bool greeterUse24HourClock: true
-    property bool greeterShowSeconds: false
-    property bool greeterPadHours12Hour: false
     property string greeterLockDateFormat: ""
     property string greeterFontFamily: ""
     property string greeterWallpaperFillMode: ""
@@ -59,6 +69,7 @@ Singleton {
     property bool lockScreenShowProfileImage: true
     property bool rememberLastSession: true
     property bool rememberLastUser: true
+    property bool greeterAutoLogin: false
     property bool greeterEnableFprint: false
     property bool greeterEnableU2f: false
     property string greeterWallpaperPath: ""
@@ -70,6 +81,24 @@ Singleton {
     property var screenPreferences: ({})
     property int animationSpeed: 2
     property string wallpaperFillMode: "Fill"
+    property string wallpaperBackgroundColorMode: "black"
+    property string wallpaperBackgroundCustomColor: "#000000"
+    readonly property color effectiveWallpaperBackgroundColor: {
+        switch (wallpaperBackgroundColorMode) {
+        case "black":
+            return "#000000";
+        case "white":
+            return "#ffffff";
+        case "primary":
+            return (typeof Theme !== "undefined") ? Theme.primary : "#000000";
+        case "surface":
+            return (typeof Theme !== "undefined") ? Theme.surfaceContainer : "#000000";
+        case "custom":
+            return wallpaperBackgroundCustomColor;
+        default:
+            return "#000000";
+        }
+    }
 
     function parseSettings(content) {
         try {
@@ -85,12 +114,9 @@ Singleton {
             customThemeFile = settings.customThemeFile !== undefined ? settings.customThemeFile : "";
             registryThemeVariants = settings.registryThemeVariants !== undefined ? settings.registryThemeVariants : ({});
             matugenScheme = settings.matugenScheme !== undefined ? settings.matugenScheme : "scheme-tonal-spot";
-            use24HourClock = settings.use24HourClock !== undefined ? settings.use24HourClock : true;
+            clockFormat = settings.clockFormat !== undefined ? settings.clockFormat : (settings.use24HourClock !== undefined ? (settings.use24HourClock ? "24h" : "12h") : "auto");
             showSeconds = settings.showSeconds !== undefined ? settings.showSeconds : false;
             padHours12Hour = settings.padHours12Hour !== undefined ? settings.padHours12Hour : false;
-            greeterUse24HourClock = settings.greeterUse24HourClock !== undefined ? settings.greeterUse24HourClock : use24HourClock;
-            greeterShowSeconds = settings.greeterShowSeconds !== undefined ? settings.greeterShowSeconds : showSeconds;
-            greeterPadHours12Hour = settings.greeterPadHours12Hour !== undefined ? settings.greeterPadHours12Hour : padHours12Hour;
             greeterLockDateFormat = settings.greeterLockDateFormat !== undefined ? settings.greeterLockDateFormat : "";
             greeterFontFamily = settings.greeterFontFamily !== undefined ? settings.greeterFontFamily : "";
             greeterWallpaperFillMode = settings.greeterWallpaperFillMode !== undefined ? settings.greeterWallpaperFillMode : "";
@@ -124,6 +150,9 @@ Singleton {
             } else {
                 rememberLastUser = settings.greeterRememberLastUser !== undefined ? settings.greeterRememberLastUser : settings.rememberLastUser !== undefined ? settings.rememberLastUser : true;
             }
+            if (configBaseDir === root._greeterCacheDir) {
+                greeterAutoLogin = settings.greeterAutoLogin !== undefined ? settings.greeterAutoLogin : false;
+            }
             greeterEnableFprint = settings.greeterEnableFprint !== undefined ? settings.greeterEnableFprint : false;
             greeterEnableU2f = settings.greeterEnableU2f !== undefined ? settings.greeterEnableU2f : false;
             greeterWallpaperPath = settings.greeterWallpaperPath !== undefined ? settings.greeterWallpaperPath : "";
@@ -135,6 +164,8 @@ Singleton {
             screenPreferences = settings.screenPreferences !== undefined ? settings.screenPreferences : ({});
             animationSpeed = settings.animationSpeed !== undefined ? settings.animationSpeed : 2;
             wallpaperFillMode = settings.wallpaperFillMode !== undefined ? settings.wallpaperFillMode : "Fill";
+            wallpaperBackgroundColorMode = settings.wallpaperBackgroundColorMode !== undefined ? settings.wallpaperBackgroundColorMode : "black";
+            wallpaperBackgroundCustomColor = settings.wallpaperBackgroundCustomColor !== undefined ? settings.wallpaperBackgroundCustomColor : "#000000";
 
             if (typeof Theme !== "undefined") {
                 if (currentThemeName === "custom" && customThemeFile) {
@@ -150,9 +181,9 @@ Singleton {
     }
 
     function getEffectiveTimeFormat() {
-        const use24 = greeterUse24HourClock;
-        const secs = greeterShowSeconds;
-        const pad = greeterPadHours12Hour;
+        const use24 = use24HourClock;
+        const secs = showSeconds;
+        const pad = padHours12Hour;
         if (use24)
             return secs ? "hh:mm:ss" : "hh:mm";
         if (pad)
@@ -188,12 +219,11 @@ Singleton {
         blockWrites: true
         atomicWrites: false
         watchChanges: false
-        printErrors: true
+        printErrors: false
         onLoaded: {
             parseSettings(settingsFile.text());
         }
-        onLoadFailed: error => {
-            log.warn("Failed to load greetd settings:", error);
+        onLoadFailed: {
             root.parseSettings("");
         }
     }

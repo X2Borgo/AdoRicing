@@ -11,6 +11,7 @@ Item {
     readonly property var log: Log.scoped("DankLauncherV2ModalStandalone")
 
     property var modalHandle: root
+    property bool triggerUsesOverlayLayer: false
 
     visible: false
 
@@ -26,12 +27,16 @@ Item {
     readonly property bool unloadContentOnClose: SettingsData.dankLauncherV2UnloadOnClose
 
     readonly property bool useHyprlandFocusGrab: CompositorService.useHyprlandFocusGrab
+
+    TransientSurfaceTracker {
+        id: transientSurfaces
+    }
     readonly property var effectiveScreen: launcherWindow.screen
     readonly property real screenWidth: effectiveScreen?.width ?? 1920
     readonly property real screenHeight: effectiveScreen?.height ?? 1080
     readonly property real dpr: effectiveScreen ? CompositorService.getScreenScale(effectiveScreen) : 1
 
-    readonly property bool frameOwnsConnectedChrome: SettingsData.connectedFrameModeActive && !!effectiveScreen && SettingsData.isScreenInPreferences(effectiveScreen, SettingsData.frameScreenPreferences)
+    readonly property bool frameOwnsConnectedChrome: CompositorService.usesConnectedFrameChromeForScreen(effectiveScreen)
     readonly property string resolvedConnectedBarSide: frameOwnsConnectedChrome ? (SettingsData.frameLauncherEmergeSide || "bottom") : ""
 
     readonly property int baseWidth: {
@@ -77,8 +82,22 @@ Item {
     readonly property real windowWidth: alignedWidth + contentX + shadowPad
     readonly property real windowHeight: alignedHeight + contentY + shadowPad
 
+    onAlignedXChanged: _kickBlurCommit()
+    onAlignedYChanged: _kickBlurCommit()
+    onAlignedWidthChanged: _kickBlurCommit()
+    onAlignedHeightChanged: _kickBlurCommit()
+    onContentVisibleChanged: _kickBlurCommit()
+
     readonly property color backgroundColor: Theme.withAlpha(Theme.surfaceContainer, Theme.popupTransparency)
-    readonly property bool useBackgroundDarken: !SettingsData.frameEnabled && SettingsData.modalDarkenBackground
+    readonly property bool useBackgroundDarken: !FrameTransitionState.effectiveFrameEnabled && SettingsData.modalDarkenBackground
+    readonly property bool useSingleWindow: CompositorService.isHyprland || useBackgroundDarken
+    readonly property bool usesOverlayLayer: useBackgroundDarken || SettingsData.launcherUseOverlayLayer || triggerUsesOverlayLayer
+    readonly property var effectiveLauncherLayer: LayerShell.fromEnv("DMS_MODAL_LAYER", root.usesOverlayLayer ? WlrLayer.Overlay : WlrLayer.Top, {
+        "allow": ["top", "overlay"],
+        "invalidLayer": WlrLayer.Top,
+        "label": "modals",
+        "error": true
+    })
     readonly property real cornerRadius: Theme.cornerRadius
     readonly property color borderColor: {
         if (!SettingsData.dankLauncherV2BorderEnabled)
@@ -100,6 +119,11 @@ Item {
 
     signal dialogClosed
 
+    function _kickBlurCommit() {
+        if (typeof launcherWindow.update === "function")
+            launcherWindow.update();
+    }
+
     function _ensureContentLoadedAndInitialize(query, mode) {
         _pendingQuery = query || "";
         _pendingMode = mode || "";
@@ -117,6 +141,7 @@ Item {
         if (!spotlightContent)
             return;
         contentVisible = true;
+        spotlightContent.closeTransientUi?.();
         spotlightContent.searchField.forceActiveFocus();
 
         var targetQuery = "";
@@ -129,14 +154,19 @@ Item {
 
         if (spotlightContent.searchField) {
             spotlightContent.searchField.text = targetQuery;
+            if (query)
+                spotlightContent.searchField.cursorPosition = targetQuery.length;
+            else
+                spotlightContent.searchField.selectAll();
         }
         if (spotlightContent.controller) {
-            var targetMode = mode || SessionData.launcherLastMode || "all";
+            var targetMode = mode || SessionData.getLauncherRestoreMode();
+            spotlightContent.controller.explicitQuerySession = !!query;
             spotlightContent.controller.searchMode = targetMode;
             spotlightContent.controller.activePluginId = "";
             spotlightContent.controller.activePluginName = "";
             spotlightContent.controller.pluginFilter = "";
-            spotlightContent.controller.fileSearchType = "all";
+            spotlightContent.controller.fileSearchType = SessionData.launcherLastFileSearchType || "all";
             spotlightContent.controller.fileSearchExt = "";
             spotlightContent.controller.fileSearchFolder = "";
             spotlightContent.controller.fileSearchSort = "score";
@@ -144,9 +174,12 @@ Item {
             spotlightContent.controller.selectedFlatIndex = 0;
             spotlightContent.controller.selectedItem = null;
             spotlightContent.controller.historyIndex = -1;
-            spotlightContent.controller.searchQuery = targetQuery;
-
-            spotlightContent.controller.performSearch();
+            if (targetQuery) {
+                spotlightContent.controller.setSearchQuery(targetQuery);
+            } else {
+                spotlightContent.controller.searchQuery = "";
+                spotlightContent.controller.performSearch();
+            }
         }
         if (spotlightContent.resetScroll) {
             spotlightContent.resetScroll();
@@ -163,8 +196,6 @@ Item {
 
         keyboardActive = true;
         ModalManager.openModal(modalHandle);
-        if (useHyprlandFocusGrab)
-            focusGrab.active = true;
 
         _ensureContentLoadedAndInitialize(query || "", mode || "");
     }
@@ -195,13 +226,13 @@ Item {
     function hide() {
         if (!spotlightOpen)
             return;
+        spotlightContent?.closeTransientUi?.();
         openedFromOverview = false;
         isClosing = true;
         contentVisible = false;
 
         keyboardActive = false;
         spotlightOpen = false;
-        focusGrab.active = false;
         ModalManager.closeModal(modalHandle);
 
         closeCleanupTimer.start();
@@ -242,8 +273,8 @@ Item {
     Connections {
         target: spotlightContent?.controller ?? null
 
-        function onModeChanged(mode) {
-            if (spotlightContent.controller.autoSwitchedToFiles)
+        function onModeChanged(mode, userInitiated) {
+            if (!userInitiated || !SettingsData.rememberLastMode)
                 return;
             SessionData.setLauncherLastMode(mode);
         }
@@ -251,8 +282,8 @@ Item {
 
     HyprlandFocusGrab {
         id: focusGrab
-        windows: [launcherWindow]
-        active: false
+        windows: [launcherWindow].concat(transientSurfaces.focusWindows)
+        active: root.useHyprlandFocusGrab && root.keyboardActive
 
         onCleared: {
             if (spotlightOpen) {
@@ -296,12 +327,12 @@ Item {
     PanelWindow {
         id: clickCatcher
         screen: launcherWindow.screen
-        visible: spotlightOpen || isClosing
+        visible: (spotlightOpen || isClosing) && !root.useSingleWindow
         color: "transparent"
-        updatesEnabled: root.useBackgroundDarken && (spotlightOpen || isClosing)
+        updatesEnabled: false
 
         WlrLayershell.namespace: "dms:spotlight:clickcatcher"
-        WlrLayershell.layer: WlrLayershell.Top
+        WlrLayershell.layer: root.effectiveLauncherLayer
         WlrLayershell.exclusiveZone: -1
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
@@ -342,22 +373,6 @@ Item {
             enabled: spotlightOpen
             onClicked: root.hide()
         }
-
-        Rectangle {
-            id: backgroundDarken
-            anchors.fill: parent
-            color: "black"
-            opacity: contentVisible && root.useBackgroundDarken ? 0.5 : 0
-            visible: (spotlightOpen || isClosing) && (root.useBackgroundDarken || opacity > 0)
-
-            Behavior on opacity {
-                NumberAnimation {
-                    easing.type: Easing.BezierSpline
-                    duration: Theme.modalAnimationDuration
-                    easing.bezierCurve: contentVisible ? Theme.expressiveCurves.expressiveDefaultSpatial : Theme.expressiveCurves.emphasized
-                }
-            }
-        }
     }
 
     PanelWindow {
@@ -370,47 +385,36 @@ Item {
             targetWindow: launcherWindow
             readonly property real s: Math.min(1, modalContainer.publishedScale)
             readonly property real op: Math.max(0, Math.min(1, (modalContainer.opacity - 0.06) * 2))
-            blurX: modalContainer.x + modalContainer.width * (1 - s * op) * 0.5
-            blurY: modalContainer.y + modalContainer.height * (1 - s * op) * 0.5
-            blurWidth: contentVisible ? modalContainer.width * s * op : 0
-            blurHeight: contentVisible ? modalContainer.height * s * op : 0
+            readonly property real visibleScale: s * op
+            // Blur tracks the surface's scaled rect
+            blurX: modalContainer.x + modalContainer.width * (1 - visibleScale) * 0.5
+            blurY: modalContainer.y + modalContainer.height * (1 - visibleScale) * 0.5
+            blurWidth: contentVisible ? modalContainer.width * visibleScale : 0
+            blurHeight: contentVisible ? modalContainer.height * visibleScale : 0
             blurRadius: root.cornerRadius
         }
 
         WlrLayershell.namespace: "dms:spotlight"
-        WlrLayershell.layer: {
-            if (root.useBackgroundDarken)
-                return WlrLayershell.Overlay;
-            switch (Quickshell.env("DMS_MODAL_LAYER")) {
-            case "bottom":
-                log.error("'bottom' layer is not valid for modals. Defaulting to 'top' layer.");
-                return WlrLayershell.Top;
-            case "background":
-                log.error("'background' layer is not valid for modals. Defaulting to 'top' layer.");
-                return WlrLayershell.Top;
-            case "overlay":
-                return WlrLayershell.Overlay;
-            default:
-                return WlrLayershell.Top;
-            }
-        }
+        WlrLayershell.layer: root.effectiveLauncherLayer
         WlrLayershell.exclusiveZone: -1
-        WlrLayershell.keyboardFocus: keyboardActive ? (root.useHyprlandFocusGrab ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive) : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: KeyboardFocus.keyboardFocus(keyboardActive, null)
 
         anchors {
             top: true
             left: true
+            right: root.useSingleWindow
+            bottom: root.useSingleWindow
         }
 
         WlrLayershell.margins {
-            left: root.windowX
-            top: root.windowY
+            left: root.useSingleWindow ? 0 : root.windowX
+            top: root.useSingleWindow ? 0 : root.windowY
             right: 0
             bottom: 0
         }
 
-        implicitWidth: root.windowWidth
-        implicitHeight: root.windowHeight
+        implicitWidth: root.useSingleWindow ? 0 : root.windowWidth
+        implicitHeight: root.useSingleWindow ? 0 : root.windowHeight
 
         mask: Region {
             item: launcherInputMask
@@ -420,26 +424,64 @@ Item {
             id: launcherInputMask
             visible: false
             color: "transparent"
-            x: modalContainer.x
-            y: modalContainer.y
-            width: modalContainer.width
-            height: modalContainer.height
+            x: root.useSingleWindow ? 0 : modalContainer.x
+            y: root.useSingleWindow ? 0 : modalContainer.y
+            width: root.useSingleWindow ? launcherWindow.width : modalContainer.width
+            height: root.useSingleWindow ? launcherWindow.height : modalContainer.height
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: root.useSingleWindow && spotlightOpen
+            z: -2
+            onClicked: root.hide()
+        }
+
+        Rectangle {
+            id: backgroundDarken
+            anchors.fill: parent
+            color: "black"
+            opacity: contentVisible && root.useBackgroundDarken ? 0.5 : 0
+            visible: (spotlightOpen || isClosing) && (root.useBackgroundDarken || opacity > 0)
+            z: -3
+
+            Behavior on opacity {
+                NumberAnimation {
+                    easing.type: Easing.BezierSpline
+                    duration: Theme.modalAnimationDuration
+                    easing.bezierCurve: contentVisible ? Theme.expressiveCurves.expressiveDefaultSpatial : Theme.expressiveCurves.emphasized
+                }
+            }
         }
 
         Item {
             id: modalContainer
-            x: root.contentX
-            y: root.contentY
+            x: root.useSingleWindow ? root.alignedX : root.contentX
+            y: root.useSingleWindow ? root.alignedY : root.contentY
             width: root.alignedWidth
             height: root.alignedHeight
             visible: _renderActive
+            z: 0
+
+            MouseArea {
+                anchors.fill: parent
+                enabled: spotlightOpen
+                hoverEnabled: false
+                acceptedButtons: Qt.AllButtons
+                onPressed: mouse => mouse.accepted = true
+                onClicked: mouse => mouse.accepted = true
+                z: -1
+            }
 
             property bool _renderActive: contentVisible
             property real publishedScale: contentVisible ? 1 : 0.96
+            property real publishedOpacity: contentVisible ? 1 : 0
 
             opacity: contentVisible ? 1 : 0
             scale: contentVisible ? 1 : 0.96
             transformOrigin: Item.Center
+            onOpacityChanged: root._kickBlurCommit()
+            onPublishedScaleChanged: root._kickBlurCommit()
 
             Behavior on opacity {
                 NumberAnimation {
@@ -460,6 +502,14 @@ Item {
             }
 
             Behavior on publishedScale {
+                NumberAnimation {
+                    easing.type: Easing.BezierSpline
+                    duration: Theme.modalAnimationDuration
+                    easing.bezierCurve: contentVisible ? Theme.expressiveCurves.expressiveDefaultSpatial : Theme.expressiveCurves.emphasized
+                }
+            }
+
+            Behavior on publishedOpacity {
                 NumberAnimation {
                     easing.type: Easing.BezierSpline
                     duration: Theme.modalAnimationDuration
@@ -504,6 +554,7 @@ Item {
                     sourceComponent: LauncherContent {
                         focus: true
                         parentModal: root
+                        transientSurfaceTracker: transientSurfaces
                     }
 
                     onLoaded: {
@@ -514,8 +565,12 @@ Item {
                     }
                 }
 
+                Keys.onPressed: event => root.spotlightContent?.activeContextMenu?.handleKey(event)
+
                 Keys.onEscapePressed: event => {
-                    root.hide();
+                    root.spotlightContent?.activeContextMenu?.handleKey(event);
+                    if (!event.accepted)
+                        root.hide();
                     event.accepted = true;
                 }
             }

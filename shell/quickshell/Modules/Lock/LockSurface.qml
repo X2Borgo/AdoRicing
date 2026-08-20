@@ -33,6 +33,7 @@ FocusScope {
 
         anchors.fill: parent
         demoMode: false
+        sessionLock: root.lock
         pam: root.pam
         passwordBuffer: root.sharedPasswordBuffer
         screenName: root.screenName
@@ -40,11 +41,7 @@ FocusScope {
         focus: !videoScreensaver.active
         opacity: videoScreensaver.active ? 0 : 1
         onUnlockRequested: root.unlockRequested()
-        onPasswordBufferChanged: {
-            if (root.sharedPasswordBuffer !== passwordBuffer) {
-                root.passwordChanged(passwordBuffer);
-            }
-        }
+        onPasswordEdited: text => root.passwordChanged(text)
 
         Behavior on opacity {
             NumberAnimation {
@@ -57,6 +54,7 @@ FocusScope {
         id: videoScreensaver
         anchors.fill: parent
         screenName: root.screenName
+        onDismissed: Qt.callLater(() => lockContent.focusPasswordField())
     }
 
     Component.onCompleted: forceActiveFocus()

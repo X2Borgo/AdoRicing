@@ -12,6 +12,35 @@ Singleton {
 
     property var settingsRoot: null
 
+    onSettingsRootChanged: {
+        if (settingsRoot && !settingsRoot.isGreeterMode)
+            consumeGreeterAutoLoginPendingSync();
+    }
+
+    readonly property string greeterAutoLoginPendingSyncPath: (Quickshell.env("DMS_GREET_CFG_DIR") || "/var/cache/dms-greeter") + "/.local/state/auto-login-sync-pending"
+
+    function consumeGreeterAutoLoginPendingSync() {
+        if (!settingsRoot || settingsRoot.isGreeterMode)
+            return;
+        greeterAutoLoginPendingCheckProcess.running = true;
+    }
+
+    property var greeterAutoLoginPendingCheckProcess: Process {
+        command: ["sh", "-c", "if [ -f " + JSON.stringify(root.greeterAutoLoginPendingSyncPath) + " ]; then rm -f " + JSON.stringify(root.greeterAutoLoginPendingSyncPath) + "; echo pending; fi"]
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if ((text || "").trim() !== "pending" || !root.settingsRoot)
+                    return;
+                if (!root.settingsRoot.greeterAutoLogin)
+                    root.settingsRoot.set("greeterAutoLogin", true);
+                else
+                    root.scheduleGreeterAutoLoginSync();
+            }
+        }
+    }
+
     property string greetdPamText: ""
     property string systemAuthPamText: ""
     property string commonAuthPamText: ""
@@ -34,6 +63,7 @@ Singleton {
     readonly property string u2fKeysPath: homeDir ? homeDir + "/.config/Yubico/u2f_keys" : ""
     readonly property bool homeU2fKeysDetected: u2fKeysPath !== "" && u2fKeysWatcher.loaded && u2fKeysText.trim() !== ""
     readonly property bool lockU2fCustomConfigDetected: pamModuleEnabled(dankshellU2fPamText, "pam_u2f")
+    readonly property bool lockU2fCustomSourceDetected: (settingsRoot?.lockU2fPamPath || "") !== "" && customU2fPamWatcher.loaded
     readonly property bool greeterPamHasFprint: greeterPamStackHasModule("pam_fprintd")
     readonly property bool greeterPamHasU2f: greeterPamStackHasModule("pam_u2f")
 
@@ -147,7 +177,7 @@ Singleton {
     readonly property bool lockU2fReady: {
         if (forcedU2fAvailable !== null)
             return forcedU2fAvailable;
-        return lockU2fCustomConfigDetected || homeU2fKeysDetected;
+        return lockU2fCustomSourceDetected || lockU2fCustomConfigDetected || homeU2fKeysDetected;
     }
 
     readonly property bool lockU2fCanEnable: {
@@ -217,6 +247,10 @@ Singleton {
     readonly property var _pamProbeCommand: ["sh", "-c", "for module in pam_fprintd.so pam_u2f.so; do found=false; for dir in /usr/lib64/security /usr/lib/security /lib/security /lib/x86_64-linux-gnu/security /usr/lib/x86_64-linux-gnu/security /usr/lib/aarch64-linux-gnu/security /run/current-system/sw/lib/security; do if [ -f \"$dir/$module\" ]; then found=true; break; fi; done; printf '%s:%s\\n' \"$module\" \"$found\"; done"]
 
     function detectAuthCapabilities() {
+        // FileView cannot watch paths that do not exist yet, so reload the U2F PAM
+        dankshellU2fPamWatcher.reload();
+        u2fKeysWatcher.reload();
+
         if (forcedFprintAvailable === null) {
             fingerprintProbeFinalized = false;
             Proc.runCommand("fprint-probe", _fprintProbeCommand, (output, exitCode) => {
@@ -294,6 +328,66 @@ Singleton {
         authApplyRerunRequested = false;
         if (shouldRerun)
             authApplyDebounce.restart();
+    }
+
+    // --- Greeter auto-login sync pipeline ---
+
+    property bool greeterAutoLoginSyncRunning: false
+    property bool greeterAutoLoginSyncQueued: false
+    property bool greeterAutoLoginSyncRerunRequested: false
+    property string greeterAutoLoginSyncStdout: ""
+    property string greeterAutoLoginSyncStderr: ""
+
+    function scheduleGreeterAutoLoginSync() {
+        if (!settingsRoot || settingsRoot.isGreeterMode)
+            return;
+
+        greeterAutoLoginSyncQueued = true;
+        if (greeterAutoLoginSyncRunning) {
+            greeterAutoLoginSyncRerunRequested = true;
+            return;
+        }
+
+        greeterAutoLoginSyncDebounce.restart();
+    }
+
+    function beginGreeterAutoLoginSync() {
+        if (!greeterAutoLoginSyncQueued || greeterAutoLoginSyncRunning || !settingsRoot || settingsRoot.isGreeterMode)
+            return;
+
+        greeterAutoLoginSyncQueued = false;
+        greeterAutoLoginSyncRerunRequested = false;
+        greeterAutoLoginSyncStdout = "";
+        greeterAutoLoginSyncStderr = "";
+        greeterAutoLoginSyncRunning = true;
+        greeterAutoLoginSyncSudoProbeProcess.running = true;
+    }
+
+    function deferGreeterAutoLoginSyncToPill(details) {
+        ToastService.dismissCategory("greeter-autologin-sync");
+        if (settingsRoot)
+            settingsRoot.set("greeterSyncPending", true);
+        ToastService.showWarning(I18n.tr("Auto-login change needs a sync"), I18n.tr("Administrator access is required. Use the Sync button in Settings → Greeter to apply.") + (details ? "\n\n" + details : ""), "dms greeter sync --autologin", "greeter-autologin-sync");
+        finishGreeterAutoLoginSync();
+    }
+
+    function greeterAutoLoginSyncSuccessToast(details) {
+        const enabling = settingsRoot && settingsRoot.greeterAutoLogin;
+        // Clear the sticky in-progress toast, then confirm with an auto-dismissing toast.
+        ToastService.dismissCategory("greeter-autologin-sync");
+        if (enabling) {
+            ToastService.showWarning(I18n.tr("Auto-login enabled"), I18n.tr("You'll skip the greeter password after the next reboot. The lock screen and signing out still require your password.") + (details ? "\n\n" + details : ""));
+        } else {
+            ToastService.showInfo(I18n.tr("Auto-login disabled"), I18n.tr("You'll enter your password at the greeter after the next reboot.") + (details ? "\n\n" + details : ""));
+        }
+    }
+
+    function finishGreeterAutoLoginSync() {
+        const shouldRerun = greeterAutoLoginSyncQueued || greeterAutoLoginSyncRerunRequested;
+        greeterAutoLoginSyncRunning = false;
+        greeterAutoLoginSyncRerunRequested = false;
+        if (shouldRerun)
+            greeterAutoLoginSyncDebounce.restart();
     }
 
     // --- PAM parsing helpers ---
@@ -387,7 +481,7 @@ Singleton {
         if (exitCode === 0)
             return "missing_enrollment";
         if (exitCode === 127 || (output || "").includes("__missing_command__"))
-            return "probe_failed";
+            return "missing_pam_support";
         return pamFprintDetected ? "probe_failed" : "missing_pam_support";
     }
 
@@ -431,6 +525,63 @@ Singleton {
         interval: 300
         repeat: false
         onTriggered: root.beginAuthApply()
+    }
+
+    Timer {
+        id: greeterAutoLoginSyncDebounce
+        interval: 300
+        repeat: false
+        onTriggered: root.beginGreeterAutoLoginSync()
+    }
+
+    property var greeterAutoLoginSyncProcess: Process {
+        command: ["dms", "greeter", "sync", "--yes", "--autologin"]
+        running: false
+
+        stdout: StdioCollector {
+            onStreamFinished: root.greeterAutoLoginSyncStdout = text || ""
+        }
+
+        stderr: StdioCollector {
+            onStreamFinished: root.greeterAutoLoginSyncStderr = text || ""
+        }
+
+        onExited: exitCode => {
+            const out = (root.greeterAutoLoginSyncStdout || "").trim();
+            const err = (root.greeterAutoLoginSyncStderr || "").trim();
+
+            if (exitCode === 0) {
+                let details = out;
+                if (err !== "")
+                    details = details !== "" ? details + "\n\nstderr:\n" + err : "stderr:\n" + err;
+                root.greeterAutoLoginSyncSuccessToast(details);
+                root.finishGreeterAutoLoginSync();
+                return;
+            }
+
+            let details = "";
+            if (out !== "")
+                details = out;
+            if (err !== "")
+                details = details !== "" ? details + "\n\nstderr:\n" + err : "stderr:\n" + err;
+            root.deferGreeterAutoLoginSyncToPill(details);
+        }
+    }
+
+    property var greeterAutoLoginSyncSudoProbeProcess: Process {
+        command: ["sudo", "-n", "true"]
+        running: false
+
+        onExited: exitCode => {
+            const enabling = root.settingsRoot && root.settingsRoot.greeterAutoLogin;
+            if (exitCode === 0) {
+                ToastService.showWarning(enabling ? I18n.tr("Applying auto-login on startup...") : I18n.tr("Disabling auto-login on startup..."), "", "dms greeter sync --autologin", "greeter-autologin-sync");
+                root.greeterAutoLoginSyncProcess.running = true;
+                return;
+            }
+
+            root.deferGreeterAutoLoginSyncToPill("");
+        }
     }
 
     property var authApplyProcess: Process {
@@ -480,7 +631,7 @@ Singleton {
         onExited: exitCode => {
             const err = (root.authApplySudoProbeStderr || "").trim();
             if (exitCode === 0) {
-                ToastService.showInfo(I18n.tr("Applying authentication changes…"), "", "", "auth-sync");
+                ToastService.showInfo(I18n.tr("Applying authentication changes..."), "", "", "auth-sync");
                 root.authApplyProcess.running = true;
                 return;
             }
@@ -576,14 +727,22 @@ Singleton {
     FileView {
         id: dankshellU2fPamWatcher
         path: "/etc/pam.d/dankshell-u2f"
+        watchChanges: true
         printErrors: false
         onLoaded: root.dankshellU2fPamText = text()
         onLoadFailed: root.dankshellU2fPamText = ""
     }
 
     FileView {
+        id: customU2fPamWatcher
+        path: root.settingsRoot?.lockU2fPamPath || ""
+        printErrors: false
+    }
+
+    FileView {
         id: u2fKeysWatcher
         path: root.u2fKeysPath
+        watchChanges: true
         printErrors: false
         onLoaded: root.u2fKeysText = text()
         onLoadFailed: root.u2fKeysText = ""

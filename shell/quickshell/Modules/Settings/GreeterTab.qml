@@ -1,72 +1,57 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Layouts
 import Quickshell.Io
 import qs.Common
 import qs.Modals.Common
-import qs.Modals.FileBrowser
+import qs.Services
 import qs.Widgets
 import qs.Modules.Settings.Widgets
 
 Item {
     id: root
 
+    LayoutMirroring.enabled: I18n.isRtl
+    LayoutMirroring.childrenInherit: true
+
     readonly property bool greeterFprintToggleAvailable: SettingsData.greeterFingerprintCanEnable || SettingsData.greeterEnableFprint
     readonly property bool greeterU2fToggleAvailable: SettingsData.greeterU2fCanEnable || SettingsData.greeterEnableU2f
 
     function greeterFingerprintDescription() {
-        const source = SettingsData.greeterFingerprintSource;
-        const reason = SettingsData.greeterFingerprintReason;
+        if (SettingsData.greeterPamExternallyManaged)
+            return I18n.tr("Managed by the primary PAM source.", "factor managed by PAM source status");
+        if (SettingsData.greeterFingerprintSource === "pam")
+            return I18n.tr("PAM already provides fingerprint auth. Enable this to show it at login.", "greeter fingerprint login setting");
 
-        if (source === "pam") {
-            switch (reason) {
-            case "configured_externally":
-                return SettingsData.greeterEnableFprint ? I18n.tr("Enabled. PAM already provides fingerprint auth.") : I18n.tr("PAM already provides fingerprint auth. Enable this to show it at login.");
-            case "missing_enrollment":
-                return SettingsData.greeterEnableFprint ? I18n.tr("Enabled. PAM provides fingerprint auth, but no prints are enrolled yet.") : I18n.tr("PAM provides fingerprint auth, but no prints are enrolled yet.");
-            case "missing_reader":
-                return I18n.tr("PAM provides fingerprint auth, but no reader was detected.");
-            default:
-                return I18n.tr("PAM provides fingerprint auth, but availability could not be confirmed.");
-            }
-        }
-
-        switch (reason) {
+        switch (SettingsData.greeterFingerprintReason) {
         case "ready":
-            return SettingsData.greeterEnableFprint ? I18n.tr("Authentication changes apply automatically. Fingerprint-only login may not unlock Keyring.") : I18n.tr("Only affects DMS-managed PAM. If greetd already includes pam_fprintd, fingerprint stays enabled.");
+            return I18n.tr("Authentication changes apply automatically.", "greeter auth setting description");
         case "missing_enrollment":
-            if (SettingsData.greeterEnableFprint)
-                return I18n.tr("Enabled, but no prints are enrolled yet. Enroll fingerprints and run Sync.");
-            return I18n.tr("Fingerprint reader detected, but no prints are enrolled yet. You can enable this now and run Sync later.");
+            return I18n.tr("Fingerprint reader detected, but no prints are enrolled yet. You can enable this now and run Sync later.", "greeter fingerprint login setting");
         case "missing_reader":
-            return SettingsData.greeterEnableFprint ? I18n.tr("Enabled, but no fingerprint reader was detected.") : I18n.tr("No fingerprint reader detected.");
+            return I18n.tr("No fingerprint reader detected.", "fingerprint setting status");
         case "missing_pam_support":
-            return I18n.tr("Not available — install fprintd and pam_fprintd, or configure greetd PAM.");
+            return I18n.tr("Not available — install fprintd and pam_fprintd, or configure greetd PAM.", "greeter fingerprint login setting");
         default:
-            return SettingsData.greeterEnableFprint ? I18n.tr("Enabled, but fingerprint availability could not be confirmed.") : I18n.tr("Fingerprint availability could not be confirmed.");
+            return I18n.tr("Fingerprint availability could not be confirmed.", "fingerprint setting status");
         }
     }
 
     function greeterU2fDescription() {
-        const source = SettingsData.greeterU2fSource;
-        const reason = SettingsData.greeterU2fReason;
+        if (SettingsData.greeterPamExternallyManaged)
+            return I18n.tr("Managed by the primary PAM source.", "factor managed by PAM source status");
+        if (SettingsData.greeterU2fSource === "pam")
+            return I18n.tr("PAM already provides security-key auth. Enable this to show it at login.", "greeter security key login setting");
 
-        if (source === "pam") {
-            return SettingsData.greeterEnableU2f ? I18n.tr("Enabled. PAM already provides security-key auth.") : I18n.tr("PAM already provides security-key auth. Enable this to show it at login.");
-        }
-
-        switch (reason) {
+        switch (SettingsData.greeterU2fReason) {
         case "ready":
-            return SettingsData.greeterEnableU2f ? I18n.tr("Authentication changes apply automatically.") : I18n.tr("Available.");
+            return I18n.tr("Authentication changes apply automatically.", "greeter auth setting description");
         case "missing_key_registration":
-            if (SettingsData.greeterEnableU2f)
-                return I18n.tr("Enabled, but no registered security key was found yet. Register a key and run Sync.");
-            return I18n.tr("Security-key support was detected, but no registered key was found yet. You can enable this now and register one later.");
+            return I18n.tr("Security-key support was detected, but no registered key was found yet. You can enable this now and register one later.", "security key setting status");
         case "missing_pam_support":
-            return I18n.tr("Not available — install or configure pam_u2f, or configure greetd PAM.");
+            return I18n.tr("Not available — install or configure pam_u2f, or configure greetd PAM.", "greeter security key login setting");
         default:
-            return SettingsData.greeterEnableU2f ? I18n.tr("Enabled, but security-key availability could not be confirmed.") : I18n.tr("Security-key availability could not be confirmed.");
+            return I18n.tr("Security-key availability could not be confirmed.", "security key setting status");
         }
     }
 
@@ -83,19 +68,6 @@ Item {
         id: greeterActionConfirm
     }
 
-    FileBrowserModal {
-        id: greeterWallpaperBrowserModal
-        browserTitle: I18n.tr("Select greeter background image")
-        browserIcon: "wallpaper"
-        browserType: "wallpaper"
-        showHiddenFiles: true
-        fileExtensions: ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.gif", "*.webp", "*.jxl", "*.avif", "*.heif"]
-        onFileSelected: path => {
-            SettingsData.set("greeterWallpaperPath", path);
-            close();
-        }
-    }
-
     property string greeterStatusText: ""
     property bool greeterStatusRunning: false
     property bool greeterSyncRunning: false
@@ -107,8 +79,6 @@ Item {
     property string greeterSudoProbeStderr: ""
     property string greeterTerminalFallbackStderr: ""
     property bool greeterTerminalFallbackFromPrecheck: false
-    property var cachedFontFamilies: []
-    property bool fontsEnumerated: false
     property bool greeterBinaryExists: false
     property bool greeterEnabled: false
     readonly property bool greeterInstalled: greeterBinaryExists || greeterEnabled
@@ -151,7 +121,7 @@ Item {
 
     function runGreeterInstallAction() {
         root.greeterPendingAction = !root.greeterInstalled ? "install" : !root.greeterEnabled ? "activate" : "uninstall";
-        greeterStatusText = I18n.tr("Opening terminal: ") + root.greeterActionLabel + "…";
+        greeterStatusText = I18n.tr("Opening terminal: ") + root.greeterActionLabel + "...";
         greeterInstallActionRunning = true;
         greeterInstallActionProcess.running = true;
     }
@@ -188,7 +158,7 @@ Item {
         greeterSudoProbeStderr = "";
         greeterTerminalFallbackStderr = "";
         greeterTerminalFallbackFromPrecheck = false;
-        greeterStatusText = I18n.tr("Checking whether sudo authentication is needed…");
+        greeterStatusText = I18n.tr("Checking whether sudo authentication is needed...");
         greeterSyncRunning = true;
         greeterSudoProbeProcess.running = true;
     }
@@ -201,26 +171,8 @@ Item {
         greeterTerminalFallbackProcess.running = true;
     }
 
-    function enumerateFonts() {
-        if (fontsEnumerated)
-            return;
-        var fonts = [];
-        var availableFonts = Qt.fontFamilies();
-        for (var i = 0; i < availableFonts.length; i++) {
-            var fontName = availableFonts[i];
-            if (fontName.startsWith("."))
-                continue;
-            fonts.push(fontName);
-        }
-        fonts.sort();
-        fonts.unshift("Default");
-        cachedFontFamilies = fonts;
-        fontsEnumerated = true;
-    }
-
     Component.onCompleted: {
         refreshAuthDetection();
-        Qt.callLater(enumerateFonts);
         Qt.callLater(checkGreeterInstallState);
     }
 
@@ -302,6 +254,8 @@ Item {
                 if (err !== "")
                     success = success + "\n\nstderr:\n" + err;
                 root.greeterStatusText = success;
+                SettingsData.clearGreeterSyncPending();
+                ToastService.showInfo(I18n.tr("Greeter sync complete"));
             } else {
                 var failure = I18n.tr("Sync failed in background mode. Trying terminal mode so you can authenticate interactively.") + " (exit " + exitCode + ")";
                 if (out !== "")
@@ -327,7 +281,7 @@ Item {
         onExited: exitCode => {
             const err = (root.greeterSudoProbeStderr || "").trim();
             if (exitCode === 0) {
-                root.greeterStatusText = I18n.tr("Running greeter sync…");
+                root.greeterStatusText = I18n.tr("Running greeter sync...");
                 greeterSyncProcess.running = true;
                 return;
             }
@@ -351,8 +305,9 @@ Item {
         onExited: exitCode => {
             root.greeterSyncRunning = false;
             if (exitCode === 0) {
-                var launched = root.greeterTerminalFallbackFromPrecheck ? I18n.tr("Terminal opened. Complete sync authentication there; it will close automatically when done.") : I18n.tr("Terminal fallback opened. Complete sync there; it will close automatically when done.");
+                var launched = root.greeterTerminalFallbackFromPrecheck ? I18n.tr("Terminal opened. Complete authentication there; it will close automatically when done.") : I18n.tr("Terminal fallback opened. Complete authentication there; it will close automatically when done.");
                 root.greeterStatusText = root.greeterStatusText ? root.greeterStatusText + "\n\n" + launched : launched;
+                SettingsData.clearGreeterSyncPending();
                 return;
             }
             var fallback = I18n.tr("Terminal fallback failed. Install one of the supported terminal emulators or run 'dms greeter sync' manually.") + " (exit " + exitCode + ")";
@@ -424,12 +379,11 @@ Item {
             label: I18n.tr("Full Day & Month", "date format option")
         }
     ]
-    readonly property var _wallpaperFillModes: ["Stretch", "Fit", "Fill", "Tile", "TileVertically", "TileHorizontally", "Pad"]
 
     DankFlickable {
         anchors.fill: parent
         clip: true
-        contentHeight: mainColumn.height + Theme.spacingXL
+        contentHeight: mainColumn.height + Theme.spacingXL + (syncPendingPill.shown ? syncPendingPill.height + Theme.spacingL : 0)
         contentWidth: width
 
         Column {
@@ -442,15 +396,16 @@ Item {
             SettingsCard {
                 width: parent.width
                 iconName: "info"
-                title: I18n.tr("Greeter Status")
+                title: I18n.tr("Status")
                 settingKey: "greeterStatus"
 
                 StyledText {
-                    text: I18n.tr("Check sync status on demand. Sync copies your theme, settings, and wallpaper configuration to the login screen. Authentication changes apply automatically.")
+                    text: I18n.tr("Sync applies your theme and settings to the login screen. Other users should run dms greeter sync --profile instead of a full sync. Authentication changes apply automatically.")
                     font.pixelSize: Theme.fontSizeSmall
                     color: Theme.surfaceVariantText
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
                 }
 
                 Item {
@@ -468,7 +423,7 @@ Item {
                         id: statusTextArea
                         anchors.fill: parent
                         anchors.margins: Theme.spacingM
-                        text: root.greeterStatusRunning ? I18n.tr("Checking…", "greeter status loading") : (root.greeterStatusText || I18n.tr("Click Refresh to check status.", "greeter status placeholder"))
+                        text: root.greeterStatusRunning ? I18n.tr("Checking...", "greeter status loading") : (root.greeterStatusText || I18n.tr("Click Refresh to check status.", "greeter status placeholder"))
                         font.pixelSize: Theme.fontSizeSmall
                         font.family: "monospace"
                         color: root.greeterStatusRunning ? Theme.surfaceVariantText : Theme.surfaceText
@@ -482,7 +437,7 @@ Item {
                     height: Theme.spacingM
                 }
 
-                RowLayout {
+                Flow {
                     width: parent.width
                     spacing: Theme.spacingS
 
@@ -492,10 +447,6 @@ Item {
                         horizontalPadding: Theme.spacingL
                         onClicked: root.promptGreeterActionConfirm()
                         enabled: !root.greeterInstallActionRunning && !root.greeterSyncRunning
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
                     }
 
                     DankButton {
@@ -519,7 +470,7 @@ Item {
             SettingsCard {
                 width: parent.width
                 iconName: "fingerprint"
-                title: I18n.tr("Login Authentication")
+                title: I18n.tr("Authentication")
                 settingKey: "greeterAuth"
 
                 StyledText {
@@ -528,6 +479,16 @@ Item {
                     color: Theme.surfaceVariantText
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
+                }
+
+                SettingsToggleRow {
+                    settingKey: "greeterPamExternallyManaged"
+                    tags: ["greeter", "pam", "managed", "external", "greetd", "auth"]
+                    text: I18n.tr("Use system PAM authentication", "system PAM policy toggle")
+                    description: I18n.tr("DMS removes its managed block from /etc/pam.d/greetd and stops writing to it", "greeter system PAM toggle description")
+                    checked: SettingsData.greeterPamExternallyManaged
+                    onToggled: checked => SettingsData.set("greeterPamExternallyManaged", checked)
                 }
 
                 SettingsToggleRow {
@@ -537,7 +498,7 @@ Item {
                     description: root.greeterFingerprintDescription()
                     descriptionColor: (SettingsData.greeterFingerprintReason === "ready" || SettingsData.greeterFingerprintReason === "configured_externally") ? Theme.surfaceVariantText : Theme.warning
                     checked: SettingsData.greeterEnableFprint
-                    enabled: root.greeterFprintToggleAvailable
+                    enabled: root.greeterFprintToggleAvailable && !SettingsData.greeterPamExternallyManaged
                     onToggled: checked => SettingsData.set("greeterEnableFprint", checked)
                 }
 
@@ -548,7 +509,7 @@ Item {
                     description: root.greeterU2fDescription()
                     descriptionColor: (SettingsData.greeterU2fReason === "ready" || SettingsData.greeterU2fReason === "configured_externally") ? Theme.surfaceVariantText : Theme.warning
                     checked: SettingsData.greeterEnableU2f
-                    enabled: root.greeterU2fToggleAvailable
+                    enabled: root.greeterU2fToggleAvailable && !SettingsData.greeterPamExternallyManaged
                     onToggled: checked => SettingsData.set("greeterEnableU2f", checked)
                 }
             }
@@ -556,7 +517,7 @@ Item {
             SettingsCard {
                 width: parent.width
                 iconName: "palette"
-                title: I18n.tr("Greeter Appearance")
+                title: I18n.tr("Appearance")
                 settingKey: "greeterAppearance"
 
                 StyledText {
@@ -565,58 +526,17 @@ Item {
                     font.weight: Font.Medium
                     color: Theme.surfaceText
                     topPadding: Theme.spacingM
+                    width: parent.width
+                    horizontalAlignment: Text.AlignLeft
                 }
 
-                SettingsDropdownRow {
+                SettingsFontDropdownRow {
                     settingKey: "greeterFontFamily"
                     tags: ["greeter", "font", "typography"]
                     text: I18n.tr("Greeter font")
                     description: I18n.tr("Font used on the login screen")
-                    options: root.fontsEnumerated ? root.cachedFontFamilies : ["Default"]
-                    currentValue: (!SettingsData.greeterFontFamily || SettingsData.greeterFontFamily === "" || SettingsData.greeterFontFamily === Theme.defaultFontFamily) ? "Default" : (SettingsData.greeterFontFamily || "Default")
-                    enableFuzzySearch: true
-                    popupWidthOffset: 100
-                    maxPopupHeight: 400
-                    onValueChanged: value => {
-                        if (value === "Default")
-                            SettingsData.set("greeterFontFamily", "");
-                        else
-                            SettingsData.set("greeterFontFamily", value);
-                    }
-                }
-
-                StyledText {
-                    text: I18n.tr("Time format")
-                    font.pixelSize: Theme.fontSizeMedium
-                    font.weight: Font.Medium
-                    color: Theme.surfaceText
-                    topPadding: Theme.spacingM
-                }
-
-                SettingsToggleRow {
-                    settingKey: "greeterUse24Hour"
-                    tags: ["greeter", "time", "24hour"]
-                    text: I18n.tr("24-hour clock")
-                    description: I18n.tr("Greeter only — does not affect main clock")
-                    checked: SettingsData.greeterUse24HourClock
-                    onToggled: checked => SettingsData.set("greeterUse24HourClock", checked)
-                }
-
-                SettingsToggleRow {
-                    settingKey: "greeterShowSeconds"
-                    tags: ["greeter", "time", "seconds"]
-                    text: I18n.tr("Show seconds")
-                    checked: SettingsData.greeterShowSeconds
-                    onToggled: checked => SettingsData.set("greeterShowSeconds", checked)
-                }
-
-                SettingsToggleRow {
-                    settingKey: "greeterPadHours"
-                    tags: ["greeter", "time", "12hour"]
-                    text: I18n.tr("Pad hours (02:00 vs 2:00)")
-                    visible: !SettingsData.greeterUse24HourClock
-                    checked: SettingsData.greeterPadHours12Hour
-                    onToggled: checked => SettingsData.set("greeterPadHours12Hour", checked)
+                    currentFont: SettingsData.greeterFontFamily || ""
+                    onFontSelected: family => SettingsData.set("greeterFontFamily", family)
                 }
 
                 StyledText {
@@ -625,18 +545,20 @@ Item {
                     font.weight: Font.Medium
                     color: Theme.surfaceText
                     topPadding: Theme.spacingM
+                    width: parent.width
+                    horizontalAlignment: Text.AlignLeft
                 }
 
                 SettingsDropdownRow {
                     settingKey: "greeterLockDateFormat"
                     tags: ["greeter", "date", "format"]
-                    text: I18n.tr("Date format")
+                    text: I18n.tr("Date Format")
                     description: I18n.tr("Greeter only — format for the date on the login screen")
                     options: root._lockDateFormatPresets.map(p => p.label)
                     currentValue: {
                         var current = (SettingsData.greeterLockDateFormat !== undefined && SettingsData.greeterLockDateFormat !== "") ? SettingsData.greeterLockDateFormat : SettingsData.lockDateFormat || "";
                         var match = root._lockDateFormatPresets.find(p => p.format === current);
-                        return match ? match.label : (current ? I18n.tr("Custom: ") + current : root._lockDateFormatPresets[0].label);
+                        return match ? match.label : (current ? I18n.tr("Custom") + ": " + current : root._lockDateFormatPresets[0].label);
                     }
                     onValueChanged: value => {
                         var preset = root._lockDateFormatPresets.find(p => p.label === value);
@@ -650,6 +572,8 @@ Item {
                     font.weight: Font.Medium
                     color: Theme.surfaceText
                     topPadding: Theme.spacingM
+                    width: parent.width
+                    horizontalAlignment: Text.AlignLeft
                 }
 
                 StyledText {
@@ -658,64 +582,26 @@ Item {
                     color: Theme.surfaceVariantText
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
                 }
 
-                Row {
+                SettingsWallpaperPicker {
                     width: parent.width
-                    spacing: Theme.spacingS
-
-                    DankTextField {
-                        id: greeterWallpaperPathField
-                        width: parent.width - browseGreeterWallpaperButton.width - Theme.spacingS
-                        placeholderText: I18n.tr("Use desktop wallpaper")
-                        text: SettingsData.greeterWallpaperPath
-                        backgroundColor: Theme.surfaceContainerHighest
-                        onTextChanged: {
-                            if (text !== SettingsData.greeterWallpaperPath)
-                                SettingsData.set("greeterWallpaperPath", text);
-                        }
-                    }
-
-                    DankButton {
-                        id: browseGreeterWallpaperButton
-                        text: I18n.tr("Browse")
-                        horizontalPadding: Theme.spacingL
-                        onClicked: greeterWallpaperBrowserModal.open()
-                    }
-                }
-
-                SettingsDropdownRow {
-                    settingKey: "greeterWallpaperFillMode"
-                    tags: ["greeter", "wallpaper", "background", "fill"]
-                    text: I18n.tr("Wallpaper fill mode")
-                    description: I18n.tr("How the background image is scaled")
-                    options: root._wallpaperFillModes.map(m => I18n.tr(m, "wallpaper fill mode"))
-                    currentValue: {
-                        var mode = (SettingsData.greeterWallpaperFillMode && SettingsData.greeterWallpaperFillMode !== "") ? SettingsData.greeterWallpaperFillMode : (SettingsData.wallpaperFillMode || "Fill");
-                        var idx = root._wallpaperFillModes.indexOf(mode);
-                        return idx >= 0 ? I18n.tr(root._wallpaperFillModes[idx], "wallpaper fill mode") : I18n.tr("Fill", "wallpaper fill mode");
-                    }
-                    onValueChanged: value => {
-                        var idx = root._wallpaperFillModes.map(m => I18n.tr(m, "wallpaper fill mode")).indexOf(value);
-                        if (idx >= 0)
-                            SettingsData.set("greeterWallpaperFillMode", root._wallpaperFillModes[idx]);
-                    }
-                }
-
-                StyledText {
-                    text: I18n.tr("Layout and module positions on the greeter are synced from your shell (e.g. bar config). Run Sync to apply.")
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceVariantText
-                    width: parent.width
-                    wrapMode: Text.Wrap
-                    topPadding: Theme.spacingS
+                    path: SettingsData.greeterWallpaperPath
+                    fillMode: SettingsData.greeterWallpaperFillMode
+                    fallbackFillMode: SettingsData.wallpaperFillMode || "Fill"
+                    browserTitle: I18n.tr("Select greeter background image")
+                    fillModeSettingKey: "greeterWallpaperFillMode"
+                    fillModeTags: ["greeter", "wallpaper", "background", "fill"]
+                    onPathSelected: path => SettingsData.set("greeterWallpaperPath", path)
+                    onFillModeSelected: mode => SettingsData.set("greeterWallpaperFillMode", mode)
                 }
             }
 
             SettingsCard {
                 width: parent.width
                 iconName: "history"
-                title: I18n.tr("Greeter Behavior")
+                title: I18n.tr("Behavior")
                 settingKey: "greeterBehavior"
 
                 StyledText {
@@ -724,6 +610,7 @@ Item {
                     color: Theme.surfaceVariantText
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
                 }
 
                 SettingsToggleRow {
@@ -743,6 +630,16 @@ Item {
                     checked: SettingsData.greeterRememberLastUser
                     onToggled: checked => SettingsData.set("greeterRememberLastUser", checked)
                 }
+
+                SettingsToggleRow {
+                    settingKey: "greeterAutoLogin"
+                    tags: ["greeter", "autologin", "login", "startup", "password"]
+                    text: I18n.tr("Auto-login on startup")
+                    description: SettingsData.greeterRememberLastUser && SettingsData.greeterRememberLastSession ? I18n.tr("Skip the greeter password after boot until you sign out. Lock screen unlock is unchanged. Takes effect on the next reboot after sync.") : I18n.tr("Requires remembering the last user and session. Enable those options first.")
+                    checked: SettingsData.greeterAutoLogin
+                    enabled: SettingsData.greeterRememberLastUser && SettingsData.greeterRememberLastSession
+                    onToggled: checked => SettingsData.set("greeterAutoLogin", checked)
+                }
             }
 
             SettingsCard {
@@ -752,11 +649,12 @@ Item {
                 settingKey: "greeterDeps"
 
                 StyledText {
-                    text: I18n.tr("DMS greeter needs: greetd, dms-greeter. Fingerprint: fprintd, pam_fprintd. Security keys: pam_u2f. Add your user to the greeter group. Authentication changes apply automatically and may open a terminal when sudo authentication is required.")
+                    text: I18n.tr("Requires greetd, dms-greeter, and your user in the greeter group (plus fprintd/pam_fprintd for fingerprint, pam_u2f for security keys). Auth changes apply automatically and may open a terminal for sudo.")
                     font.pixelSize: Theme.fontSizeSmall
                     color: Theme.surfaceVariantText
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
                 }
 
                 StyledText {
@@ -767,6 +665,7 @@ Item {
                     linkColor: Theme.primary
                     width: parent.width
                     wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignLeft
                     onLinkActivated: url => Qt.openUrlExternally(url)
 
                     MouseArea {
@@ -776,6 +675,89 @@ Item {
                         propagateComposedEvents: true
                     }
                 }
+            }
+        }
+    }
+
+    Rectangle {
+        id: syncPendingPill
+
+        readonly property bool shown: SettingsData.greeterSyncPending && root.greeterInstalled
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: shown ? Theme.spacingL : Theme.spacingXS
+        width: pillRow.implicitWidth + Theme.spacingL * 2
+        height: 44
+        radius: height / 2
+        color: Theme.primary
+        opacity: shown ? 1 : 0
+        visible: opacity > 0
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Theme.shortDuration
+                easing.type: Theme.standardEasing
+            }
+        }
+
+        Behavior on anchors.bottomMargin {
+            NumberAnimation {
+                duration: Theme.shortDuration
+                easing.type: Theme.standardEasing
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.AllButtons
+            cursorShape: !root.greeterSyncRunning && !root.greeterInstallActionRunning ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: mouse => {
+                if (mouse.button === Qt.LeftButton && !root.greeterSyncRunning && !root.greeterInstallActionRunning)
+                    root.runGreeterSync();
+            }
+        }
+
+        Row {
+            id: pillRow
+            anchors.centerIn: parent
+            spacing: Theme.spacingS
+
+            DankIcon {
+                id: syncPillIcon
+                name: "sync"
+                size: Theme.iconSize - 4
+                color: Theme.primaryText
+                anchors.verticalCenter: parent.verticalCenter
+
+                RotationAnimation on rotation {
+                    running: root.greeterSyncRunning && syncPendingPill.shown
+                    from: 0
+                    to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                    onRunningChanged: {
+                        if (!running)
+                            syncPillIcon.rotation = 0;
+                    }
+                }
+            }
+
+            StyledText {
+                text: root.greeterSyncRunning ? I18n.tr("Syncing...") : I18n.tr("Sync to apply")
+                color: Theme.primaryText
+                font.pixelSize: Theme.fontSizeMedium
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            DankActionButton {
+                iconName: "close"
+                iconSize: Theme.iconSize - 6
+                iconColor: Theme.primaryText
+                buttonSize: 28
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: SettingsData.revertGreeterSyncPending()
             }
         }
     }

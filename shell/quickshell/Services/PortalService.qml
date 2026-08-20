@@ -16,6 +16,7 @@ Singleton {
     property string profileImage: ""
     property bool settingsPortalAvailable: false
     property int systemColorScheme: 0
+    property bool colorSchemeInitialized: false
 
     property bool freedeskAvailable: false
     property string colorSchemeCommand: ""
@@ -87,17 +88,52 @@ Singleton {
         }
     }
 
-    function getSystemColorScheme() {
-        if (typeof SettingsData !== "undefined" && SettingsData.syncModeWithPortal === false) {
+    function canSyncColorScheme() {
+        if (typeof SettingsData === "undefined" || !SettingsData.syncModeWithPortal)
+            return false;
+        if (!settingsPortalAvailable)
+            return false;
+        if (typeof SessionData !== "undefined" && SessionData.themeModeAutoEnabled)
+            return false;
+        return typeof Theme !== "undefined";
+    }
+
+    // Follow only genuine portal transitions, debounced by the settle window — the
+    // opt-in GTK4-refresh toggle reverts within ~400ms, and a stale portal value
+    // (broken gsettings→portal bridge) must never revert a DMS-initiated change.
+    function handlePortalColorScheme(scheme) {
+        const isTransition = colorSchemeInitialized && scheme !== systemColorScheme;
+        colorSchemeInitialized = true;
+        systemColorScheme = scheme;
+
+        if (!canSyncColorScheme())
+            return;
+
+        const shouldBeLight = scheme !== 1;
+        if (Theme.isLightMode === shouldBeLight) {
+            colorSchemeSettleTimer.stop();
             return;
         }
-        if (!freedeskAvailable)
+        if (!isTransition)
             return;
-        DMSService.sendRequest("freedesktop.settings.getColorScheme", null, response => {
-            if (response.result) {
-                systemColorScheme = response.result.value || 0;
+        colorSchemeSettleTimer.restart();
+    }
+
+    Timer {
+        id: colorSchemeSettleTimer
+        interval: 1000
+        onTriggered: {
+            if (!root.canSyncColorScheme())
+                return;
+            const shouldBeLight = root.systemColorScheme !== 1;
+            if (Theme.isLightMode === shouldBeLight)
+                return;
+            if (Theme.workerRunning) {
+                restart();
+                return;
             }
-        });
+            Theme.setLightMode(shouldBeLight, true, false);
+        }
     }
 
     function setLightMode(isLightMode) {
@@ -112,13 +148,16 @@ Singleton {
             return;
         }
 
-        const targetScheme = isLightMode ? "default" : "prefer-dark";
+        const preferLight = isLightMode && systemColorScheme === 2;
+        const targetScheme = isLightMode ? (preferLight ? "prefer-light" : "default") : "prefer-dark";
 
-        if (colorSchemeCommand === "gsettings") {
+        switch (colorSchemeCommand) {
+        case "gsettings":
             Quickshell.execDetached(["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", targetScheme]);
-        }
-        if (colorSchemeCommand === "dconf") {
+            break;
+        case "dconf":
             Quickshell.execDetached(["dconf", "write", "/org/gnome/desktop/interface/color-scheme", `'${targetScheme}'`]);
+            break;
         }
     }
 
@@ -177,6 +216,29 @@ Singleton {
     }
 
     Connections {
+        target: typeof SettingsData !== "undefined" ? SettingsData : null
+
+        function onSyncModeWithPortalChanged() {
+            if (!SettingsData.syncModeWithPortal)
+                return;
+            if (typeof Theme === "undefined")
+                return;
+            root.setSystemColorScheme(Theme.isLightMode);
+        }
+    }
+
+    Connections {
+        target: DMSService
+
+        function onFreedesktopStateUpdate(data) {
+            if (!data || !data.settings)
+                return;
+            root.settingsPortalAvailable = data.settings.available === true;
+            root.handlePortalColorScheme(data.settings.colorScheme || 0);
+        }
+    }
+
+    Connections {
         target: DMSService
 
         function onConnectionStateChanged() {
@@ -232,18 +294,28 @@ Singleton {
         DMSService.sendRequest("freedesktop.getState", null, response => {
             if (response.result && response.result.settings) {
                 settingsPortalAvailable = response.result.settings.available || false;
-                if (settingsPortalAvailable && SettingsData.syncModeWithPortal) {
-                    getSystemColorScheme();
-                }
+                handlePortalColorScheme(response.result.settings.colorScheme || 0);
             }
         });
     }
 
+    property string pendingGreeterProfileUser: ""
+
     function getGreeterUserProfileImage(username) {
         if (!username) {
             profileImage = "";
+            pendingGreeterProfileUser = "";
             return;
         }
+        if (typeof GreeterUsersService !== "undefined") {
+            const cachedPath = GreeterUsersService.profileImagePath(username);
+            if (cachedPath) {
+                profileImage = cachedPath;
+                pendingGreeterProfileUser = "";
+                return;
+            }
+        }
+        pendingGreeterProfileUser = username;
         userProfileCheckProcess.command = ["bash", "-c", `uid=$(id -u ${username} 2>/dev/null) && [ -n "$uid" ] && dbus-send --system --print-reply --dest=org.freedesktop.Accounts /org/freedesktop/Accounts/User$uid org.freedesktop.DBus.Properties.Get string:org.freedesktop.Accounts.User string:IconFile 2>/dev/null | grep -oP 'string "\\K[^"]+' || echo ""`];
         userProfileCheckProcess.running = true;
     }
@@ -261,12 +333,14 @@ Singleton {
                 } else {
                     root.profileImage = "";
                 }
+                root.pendingGreeterProfileUser = "";
             }
         }
 
         onExited: exitCode => {
-            if (exitCode !== 0) {
+            if (exitCode !== 0 && root.pendingGreeterProfileUser !== "") {
                 root.profileImage = "";
+                root.pendingGreeterProfileUser = "";
             }
         }
     }

@@ -46,14 +46,37 @@ Item {
                 settingKey: "timeFormat"
                 iconName: "schedule"
 
-                SettingsToggleRow {
+                SettingsDropdownRow {
                     tab: "time"
-                    tags: ["time", "24hour", "format"]
-                    settingKey: "use24HourClock"
-                    text: I18n.tr("24-Hour Format")
+                    tags: ["time", "24hour", "12hour", "format", "locale"]
+                    settingKey: "clockFormat"
+                    text: I18n.tr("Time Format")
                     description: I18n.tr("Use 24-hour time format instead of 12-hour AM/PM")
-                    checked: SettingsData.use24HourClock
-                    onToggled: checked => SettingsData.set("use24HourClock", checked)
+                    readonly property var _sample: new Date(2000, 0, 1, 13, 0, 0)
+                    readonly property string _twelve: Qt.formatTime(_sample, "h:mm AP")
+                    readonly property string _twentyFour: Qt.formatTime(_sample, "HH:mm")
+                    options: [I18n.tr("System Default"), _twelve, _twentyFour]
+                    currentValue: {
+                        switch (SettingsData.clockFormat) {
+                        case "12h":
+                            return _twelve;
+                        case "24h":
+                            return _twentyFour;
+                        default:
+                            return I18n.tr("System Default");
+                        }
+                    }
+                    onValueChanged: value => {
+                        if (value === _twelve) {
+                            SettingsData.set("clockFormat", "12h");
+                            return;
+                        }
+                        if (value === _twentyFour) {
+                            SettingsData.set("clockFormat", "24h");
+                            return;
+                        }
+                        SettingsData.set("clockFormat", "auto");
+                    }
                 }
 
                 SettingsToggleRow {
@@ -115,6 +138,34 @@ Item {
                     }
                 }
 
+                SettingsDropdownRow {
+                    tab: "time"
+                    tags: ["calendar", "backend", "daemon", "khal", "dankcalendar", "events"]
+                    settingKey: "calendarBackend"
+                    text: I18n.tr("Calendar Backend")
+                    description: {
+                        const resolved = CalendarService.activeBackend;
+                        switch (resolved) {
+                        case "dankcal":
+                            return I18n.tr("Using DankCalendar%1", "calendar backend status").arg(CalendarService.isDankActive && CalendarService.calendars.length > 0 ? "" : " (connecting…)");
+                        case "khal":
+                            return I18n.tr("Using khal", "calendar backend status");
+                        default:
+                            return I18n.tr("No calendar source available", "calendar backend status");
+                        }
+                    }
+                    readonly property var _backendValues: ["auto", "khal", "dankcal"]
+                    readonly property var _backendLabels: [I18n.tr("Auto", "calendar backend option"), I18n.tr("khal", "calendar backend option"), I18n.tr("DankCalendar", "calendar backend option")]
+                    options: _backendLabels
+                    currentValue: _backendLabels[Math.max(0, _backendValues.indexOf(SettingsData.calendarBackend))]
+                    onValueChanged: value => {
+                        const idx = _backendLabels.indexOf(value);
+                        if (idx < 0)
+                            return;
+                        SettingsData.set("calendarBackend", _backendValues[idx]);
+                    }
+                }
+
                 Rectangle {
                     width: parent.width
                     height: 1
@@ -127,7 +178,7 @@ Item {
                     tags: ["date", "format", "topbar"]
                     settingKey: "clockDateFormat"
                     text: I18n.tr("Top Bar Format")
-                    description: "Preview: " + (SettingsData.clockDateFormat ? new Date().toLocaleDateString(I18n.locale(), SettingsData.clockDateFormat) : new Date().toLocaleDateString(I18n.locale(), "ddd d"))
+                    description: I18n.tr("Preview: %1").arg(SettingsData.clockDateFormat ? new Date().toLocaleDateString(I18n.locale(), SettingsData.clockDateFormat) : new Date().toLocaleDateString(I18n.locale(), "ddd d"))
                     options: [I18n.tr("System Default", "date format option"), I18n.tr("Day Date", "date format option"), I18n.tr("Day Month Date", "date format option"), I18n.tr("Month Date", "date format option"), I18n.tr("Numeric (M/D)", "date format option"), I18n.tr("Numeric (D/M)", "date format option"), I18n.tr("Full with Year", "date format option"), I18n.tr("ISO Date", "date format option"), I18n.tr("Full Day & Month", "date format option"), I18n.tr("Custom...", "date format option")]
                     currentValue: {
                         if (!SettingsData.clockDateFormat || SettingsData.clockDateFormat.length === 0)
@@ -214,7 +265,7 @@ Item {
                     tags: ["date", "format", "lock", "screen"]
                     settingKey: "lockDateFormat"
                     text: I18n.tr("Lock Screen Format")
-                    description: "Preview: " + (SettingsData.lockDateFormat ? new Date().toLocaleDateString(I18n.locale(), SettingsData.lockDateFormat) : new Date().toLocaleDateString(I18n.locale(), Locale.LongFormat))
+                    description: I18n.tr("Preview: %1").arg(SettingsData.lockDateFormat ? new Date().toLocaleDateString(I18n.locale(), SettingsData.lockDateFormat) : new Date().toLocaleDateString(I18n.locale(), Locale.LongFormat))
                     options: [I18n.tr("System Default", "date format option"), I18n.tr("Day Date", "date format option"), I18n.tr("Day Month Date", "date format option"), I18n.tr("Month Date", "date format option"), I18n.tr("Numeric (M/D)", "date format option"), I18n.tr("Numeric (D/M)", "date format option"), I18n.tr("Full with Year", "date format option"), I18n.tr("ISO Date", "date format option"), I18n.tr("Full Day & Month", "date format option"), I18n.tr("Custom...", "date format option")]
                     currentValue: {
                         if (!SettingsData.lockDateFormat || SettingsData.lockDateFormat.length === 0)
@@ -322,7 +373,7 @@ Item {
 
                             Column {
                                 width: (parent.width - Theme.spacingL) / 2
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 StyledText {
                                     text: I18n.tr("• d - Day (1-31)")
@@ -353,7 +404,7 @@ Item {
 
                             Column {
                                 width: (parent.width - Theme.spacingL) / 2
-                                spacing: 2
+                                spacing: Theme.spacingXXS
 
                                 StyledText {
                                     text: I18n.tr("• MM - Month (01-12)")
@@ -537,6 +588,7 @@ Item {
                                                 if (text && longitudeInput.text) {
                                                     const coords = text + "," + longitudeInput.text;
                                                     SessionData.weatherCoordinates = coords;
+                                                    SessionData.weatherLocation = "";
                                                     SessionData.saveSettings();
                                                 }
                                             }
@@ -587,6 +639,7 @@ Item {
                                                 if (text && latitudeInput.text) {
                                                     const coords = latitudeInput.text + "," + text;
                                                     SessionData.weatherCoordinates = coords;
+                                                    SessionData.weatherLocation = "";
                                                     SessionData.saveSettings();
                                                 }
                                             }
@@ -643,14 +696,14 @@ Item {
                     DankIcon {
                         name: "cloud_off"
                         size: Theme.iconSize * 2
-                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.5)
+                        color: Theme.surfaceTextSecondary
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
 
                     StyledText {
                         text: I18n.tr("No Weather Data Available")
                         font.pixelSize: Theme.fontSizeLarge
-                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                        color: Theme.surfaceTextMedium
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
                 }
@@ -668,7 +721,7 @@ Item {
                             id: refreshButton
                             name: "refresh"
                             size: Theme.iconSize - 4
-                            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.4)
+                            color: Theme.onSurface_38
                             anchors.right: parent.right
                             anchors.top: parent.top
                             smoothTransform: isRefreshing
@@ -754,7 +807,7 @@ Item {
                                         id: unitText
                                         text: SettingsData.useFahrenheit ? "F" : "C"
                                         font.pixelSize: Theme.fontSizeMedium
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.left: tempText.right
                                         anchors.leftMargin: Theme.spacingXS
                                         anchors.verticalCenter: parent.verticalCenter
@@ -776,13 +829,13 @@ Item {
                                     property var feelsLike: SettingsData.useFahrenheit ? (WeatherService.weather.feelsLikeF || WeatherService.weather.tempF) : (WeatherService.weather.feelsLike || WeatherService.weather.temp)
                                     text: I18n.tr("Feels Like %1°").arg(feelsLike)
                                     font.pixelSize: Theme.fontSizeSmall
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.5)
+                                    color: Theme.surfaceTextSecondary
                                 }
 
                                 StyledText {
                                     text: WeatherService.weather.city || ""
                                     font.pixelSize: Theme.fontSizeMedium
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                    color: Theme.surfaceTextMedium
                                     visible: text.length > 0
                                 }
                             }
@@ -803,7 +856,7 @@ Item {
                                         id: sunriseIcon
                                         name: "wb_twilight"
                                         size: Theme.iconSize - 6
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                        color: Theme.surfaceTextSecondary
                                         anchors.left: parent.left
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
@@ -812,7 +865,7 @@ Item {
                                         id: sunriseText
                                         text: WeatherService.weather.sunrise || ""
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                        color: Theme.surfaceTextSecondary
                                         anchors.left: sunriseIcon.right
                                         anchors.leftMargin: Theme.spacingXS
                                         anchors.verticalCenter: parent.verticalCenter
@@ -827,7 +880,7 @@ Item {
                                         id: sunsetIcon
                                         name: "bedtime"
                                         size: Theme.iconSize - 6
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                        color: Theme.surfaceTextSecondary
                                         anchors.left: parent.left
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
@@ -836,7 +889,7 @@ Item {
                                         id: sunsetText
                                         text: WeatherService.weather.sunset || ""
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.6)
+                                        color: Theme.surfaceTextSecondary
                                         anchors.left: sunsetIcon.right
                                         anchors.leftMargin: Theme.spacingXS
                                         anchors.verticalCenter: parent.verticalCenter
@@ -849,7 +902,7 @@ Item {
                     Rectangle {
                         width: parent.width
                         height: 1
-                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.1)
+                        color: Theme.outlineStrong
                     }
 
                     GridLayout {
@@ -873,7 +926,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -885,11 +938,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Feels Like")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {
@@ -917,7 +970,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -929,11 +982,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Humidity")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {
@@ -961,7 +1014,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -973,11 +1026,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Wind")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {
@@ -1018,7 +1071,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -1030,11 +1083,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Pressure")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {
@@ -1068,7 +1121,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -1080,11 +1133,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Rain Chance")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {
@@ -1112,7 +1165,7 @@ Item {
                                     width: 32
                                     height: 32
                                     radius: 16
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                                    color: Theme.primaryHover
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     DankIcon {
                                         anchors.centerIn: parent
@@ -1124,11 +1177,11 @@ Item {
 
                                 Column {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 2
+                                    spacing: Theme.spacingXXS
                                     StyledText {
                                         text: I18n.tr("Visibility")
                                         font.pixelSize: Theme.fontSizeSmall
-                                        color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                                        color: Theme.surfaceTextMedium
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     StyledText {

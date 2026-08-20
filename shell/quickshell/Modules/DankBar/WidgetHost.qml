@@ -17,6 +17,7 @@ Loader {
     property real barSpacing: 4
     property var barConfig: null
     property var blurBarWindow: null
+    property real sectionAvailablePrimarySize: 0
     property bool isFirst: false
     property bool isLast: false
     property real sectionSpacing: 0
@@ -25,6 +26,7 @@ Loader {
     property bool isTopBarEdge: false
     property bool isBottomBarEdge: false
     property string _registeredScreenName: ""
+    property var _registeredItem: null
 
     asynchronous: false
 
@@ -143,6 +145,14 @@ Loader {
 
     Binding {
         target: root.item
+        when: root.item && "sectionAvailablePrimarySize" in root.item
+        property: "sectionAvailablePrimarySize"
+        value: root.sectionAvailablePrimarySize
+        restoreMode: Binding.RestoreNone
+    }
+
+    Binding {
+        target: root.item
         when: root.item && "isLeftBarEdge" in root.item
         property: "isLeftBarEdge"
         value: root.isLeftBarEdge
@@ -218,15 +228,17 @@ Loader {
             return;
 
         _registeredScreenName = parentScreen.name;
-        BarWidgetService.registerWidget(widgetId, _registeredScreenName, item);
+        _registeredItem = item;
+        BarWidgetService.registerWidget(widgetId, _registeredScreenName, _registeredItem);
     }
 
     function unregisterWidget() {
         if (!widgetId || !_registeredScreenName)
             return;
 
-        BarWidgetService.unregisterWidget(widgetId, _registeredScreenName);
+        BarWidgetService.unregisterWidget(widgetId, _registeredScreenName, _registeredItem);
         _registeredScreenName = "";
+        _registeredItem = null;
     }
 
     function getWidgetComponent(widgetId, components) {
@@ -282,7 +294,7 @@ Loader {
             "cpuTemp": dgopAvailable,
             "gpuTemp": dgopAvailable,
             "network_speed_monitor": dgopAvailable,
-            "layout": CompositorService.isDwl && DwlService.dwlAvailable
+            "layout": CompositorService.isMango && MangoService.available
         };
 
         return widgetVisibility[widgetId] ?? true;

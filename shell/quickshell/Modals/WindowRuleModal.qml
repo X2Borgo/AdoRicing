@@ -12,6 +12,7 @@ FloatingWindow {
     property bool isEditMode: editingRule !== null
     property bool isNiri: CompositorService.isNiri
     property bool isHyprland: CompositorService.isHyprland
+    property bool isMango: CompositorService.isMango
     property bool submitting: false
     property var targetWindow: null
 
@@ -20,6 +21,10 @@ FloatingWindow {
     readonly property int inputFieldHeight: Theme.fontSizeMedium + Theme.spacingL * 2
     readonly property int sectionSpacing: Theme.spacingL
 
+    ListModel {
+        id: extraMatchModel
+    }
+
     objectName: "windowRuleModal"
     title: isEditMode ? I18n.tr("Edit Window Rule") : I18n.tr("Create Window Rule")
     minimumSize: Qt.size(500, 600)
@@ -27,12 +32,27 @@ FloatingWindow {
     color: Theme.surfaceContainer
     visible: false
 
+    onClosed: hide()
+
     function resetForm() {
         nameInput.text = "";
         appIdInput.text = "";
         titleInput.text = "";
+        extraMatchModel.clear();
+        condFloating.triState = 0;
+        condActive.triState = 0;
+        condFocused.triState = 0;
+        condActiveInColumn.triState = 0;
+        condCastTarget.triState = 0;
+        condUrgent.triState = 0;
+        condAtStartup.triState = 0;
+        condXwayland.triState = 0;
+        condFullscreen.triState = 0;
+        condPinned.triState = 0;
+        condInitialised.triState = 0;
         opacityEnabled.checked = false;
         opacitySlider.value = 100;
+        floatingCond.triState = 0;
         floatingToggle.checked = false;
         maximizedToggle.checked = false;
         maximizedToEdgesToggle.checked = false;
@@ -52,6 +72,15 @@ FloatingWindow {
         clipToGeometryToggle.checked = false;
         tiledStateToggle.checked = false;
         drawBorderBgToggle.checked = false;
+        blurCond.triState = 0;
+        xrayCond.triState = 0;
+        noiseEnabled.checked = false;
+        noiseSlider.value = 5;
+        saturationEnabled.checked = false;
+        saturationSlider.value = 100;
+        floatingXInput.text = "";
+        floatingYInput.text = "";
+        floatingRelativeDropdown.currentValue = "top-left";
         minWidthInput.text = "";
         maxWidthInput.text = "";
         minHeightInput.text = "";
@@ -66,10 +95,20 @@ FloatingWindow {
         noRoundingToggle.checked = false;
         pinToggle.checked = false;
         opaqueToggle.checked = false;
-        sizeInput.text = "";
-        moveInput.text = "";
+        moveXInput.text = "";
+        moveYInput.text = "";
+        sizeWInput.text = "";
+        sizeHInput.text = "";
         monitorInput.text = "";
         hyprWorkspaceInput.text = "";
+        mangoTagsInput.text = "";
+        mangoMonitorInput.text = "";
+        mangoSizeInput.text = "";
+        mangoNoBlurToggle.checked = false;
+        mangoNoBorderToggle.checked = false;
+        mangoNoShadowToggle.checked = false;
+        mangoNoRoundingToggle.checked = false;
+        mangoNoAnimToggle.checked = false;
     }
 
     function show(window) {
@@ -78,30 +117,55 @@ FloatingWindow {
         resetForm();
         if (targetWindow) {
             nameInput.text = targetWindow.appId || "";
-            appIdInput.text = targetWindow.appId ? "^" + targetWindow.appId + "$" : "";
+            if (targetWindow.appId)
+                appIdInput.text = isMango ? targetWindow.appId : "^" + targetWindow.appId + "$";
+            else
+                appIdInput.text = "";
         }
         visible = true;
         Qt.callLater(() => nameInput.forceActiveFocus());
     }
 
-    function showEdit(rule) {
-        if (!rule) {
-            show();
-            return;
-        }
-        editingRule = rule;
-        resetForm();
+    function triFromBool(v) {
+        if (v === true)
+            return 1;
+        if (v === false)
+            return 2;
+        return 0;
+    }
 
+    function populateForm(rule) {
         nameInput.text = rule.name || "";
-        const match = rule.matchCriteria || {};
+        const matchList = (rule.matches && rule.matches.length > 0) ? rule.matches : [rule.matchCriteria || {}];
+        const match = matchList[0] || {};
         appIdInput.text = match.appId || "";
         titleInput.text = match.title || "";
+        extraMatchModel.clear();
+        for (let i = 1; i < matchList.length; i++) {
+            extraMatchModel.append({
+                "rowAppId": matchList[i].appId || "",
+                "rowTitle": matchList[i].title || ""
+            });
+        }
+
+        condFloating.triState = triFromBool(match.isFloating);
+        condActive.triState = triFromBool(match.isActive);
+        condFocused.triState = triFromBool(match.isFocused);
+        condActiveInColumn.triState = triFromBool(match.isActiveInColumn);
+        condCastTarget.triState = triFromBool(match.isWindowCastTarget);
+        condUrgent.triState = triFromBool(match.isUrgent);
+        condAtStartup.triState = triFromBool(match.atStartup);
+        condXwayland.triState = triFromBool(match.xwayland);
+        condFullscreen.triState = triFromBool(match.fullscreen);
+        condPinned.triState = triFromBool(match.pinned);
+        condInitialised.triState = triFromBool(match.initialised);
 
         const actions = rule.actions || {};
         const hasOpacity = actions.opacity !== undefined && actions.opacity !== null;
         opacityEnabled.checked = hasOpacity;
         opacitySlider.value = hasOpacity ? Math.round(actions.opacity * 100) : 100;
 
+        floatingCond.triState = triFromBool(actions.openFloating);
         floatingToggle.checked = actions.openFloating || false;
         maximizedToggle.checked = actions.openMaximized || false;
         maximizedToEdgesToggle.checked = actions.openMaximizedToEdges || false;
@@ -131,6 +195,19 @@ FloatingWindow {
 
         drawBorderBgToggle.checked = actions.drawBorderWithBackground || false;
 
+        xrayCond.triState = triFromBool(actions.backgroundXray);
+        blurCond.triState = triFromBool(actions.backgroundBlur);
+        const hasNoise = actions.backgroundNoise !== undefined && actions.backgroundNoise !== null;
+        noiseEnabled.checked = hasNoise;
+        noiseSlider.value = hasNoise ? Math.round(actions.backgroundNoise * 100) : 5;
+        const hasSaturation = actions.backgroundSaturation !== undefined && actions.backgroundSaturation !== null;
+        saturationEnabled.checked = hasSaturation;
+        saturationSlider.value = hasSaturation ? Math.round(actions.backgroundSaturation * 100) : 100;
+
+        floatingXInput.text = (actions.defaultFloatingX !== undefined && actions.defaultFloatingX !== null) ? String(actions.defaultFloatingX) : "";
+        floatingYInput.text = (actions.defaultFloatingY !== undefined && actions.defaultFloatingY !== null) ? String(actions.defaultFloatingY) : "";
+        floatingRelativeDropdown.currentValue = actions.defaultFloatingRelativeTo || "top-left";
+
         minWidthInput.text = actions.minWidth !== undefined ? String(actions.minWidth) : "";
         maxWidthInput.text = actions.maxWidth !== undefined ? String(actions.maxWidth) : "";
         minHeightInput.text = actions.minHeight !== undefined ? String(actions.minHeight) : "";
@@ -146,11 +223,43 @@ FloatingWindow {
         noRoundingToggle.checked = actions.norounding || false;
         pinToggle.checked = actions.pin || false;
         opaqueToggle.checked = actions.opaque || false;
-        sizeInput.text = actions.size || "";
-        moveInput.text = actions.move || "";
+        moveXInput.text = actions.moveX || "";
+        moveYInput.text = actions.moveY || "";
+        sizeWInput.text = actions.sizeWidth || "";
+        sizeHInput.text = actions.sizeHeight || "";
         monitorInput.text = actions.monitor || "";
         hyprWorkspaceInput.text = actions.workspace || "";
 
+        mangoTagsInput.text = actions.workspace || "";
+        mangoMonitorInput.text = actions.monitor || "";
+        mangoSizeInput.text = (actions.sizeWidth && actions.sizeHeight) ? actions.sizeWidth + "x" + actions.sizeHeight : "";
+        mangoNoBlurToggle.checked = actions.noblur || false;
+        mangoNoBorderToggle.checked = actions.noborder || false;
+        mangoNoShadowToggle.checked = actions.noshadow || false;
+        mangoNoRoundingToggle.checked = actions.norounding || false;
+        mangoNoAnimToggle.checked = actions.noanim || false;
+    }
+
+    function showEdit(rule) {
+        if (!rule) {
+            show();
+            return;
+        }
+        editingRule = rule;
+        resetForm();
+        populateForm(rule);
+        visible = true;
+        Qt.callLater(() => nameInput.forceActiveFocus());
+    }
+
+    function showCopy(rule) {
+        if (!rule) {
+            show();
+            return;
+        }
+        editingRule = null;
+        resetForm();
+        populateForm(rule);
         visible = true;
         Qt.callLater(() => nameInput.forceActiveFocus());
     }
@@ -161,6 +270,13 @@ FloatingWindow {
         targetWindow = null;
     }
 
+    function applyCond(obj, key, triState) {
+        if (triState === 1)
+            obj[key] = true;
+        else if (triState === 2)
+            obj[key] = false;
+    }
+
     function submitAndClose() {
         const matchCriteria = {};
         if (appIdInput.text.trim())
@@ -168,11 +284,45 @@ FloatingWindow {
         if (titleInput.text.trim())
             matchCriteria.title = titleInput.text.trim();
 
+        applyCond(matchCriteria, "isFloating", condFloating.triState);
+        if (isNiri) {
+            applyCond(matchCriteria, "isActive", condActive.triState);
+            applyCond(matchCriteria, "isFocused", condFocused.triState);
+            applyCond(matchCriteria, "isActiveInColumn", condActiveInColumn.triState);
+            applyCond(matchCriteria, "isWindowCastTarget", condCastTarget.triState);
+            applyCond(matchCriteria, "isUrgent", condUrgent.triState);
+            applyCond(matchCriteria, "atStartup", condAtStartup.triState);
+        }
+        if (isHyprland) {
+            applyCond(matchCriteria, "xwayland", condXwayland.triState);
+            applyCond(matchCriteria, "fullscreen", condFullscreen.triState);
+            applyCond(matchCriteria, "pinned", condPinned.triState);
+            applyCond(matchCriteria, "initialised", condInitialised.triState);
+        }
+
+        const matches = [];
+        if (Object.keys(matchCriteria).length > 0)
+            matches.push(matchCriteria);
+        if (isNiri) {
+            for (let i = 0; i < extraMatchModel.count; i++) {
+                const row = extraMatchModel.get(i);
+                const m = {};
+                if ((row.rowAppId || "").trim())
+                    m.appId = row.rowAppId.trim();
+                if ((row.rowTitle || "").trim())
+                    m.title = row.rowTitle.trim();
+                if (Object.keys(m).length > 0)
+                    matches.push(m);
+            }
+        }
+
         const actions = {};
 
         if (opacityEnabled.checked)
             actions.opacity = opacitySlider.value / 100;
-        if (floatingToggle.checked)
+        if (isNiri)
+            applyCond(actions, "openFloating", floatingCond.triState);
+        else if (floatingToggle.checked)
             actions.openFloating = true;
         if (maximizedToggle.checked)
             actions.openMaximized = true;
@@ -206,6 +356,23 @@ FloatingWindow {
             actions.tiledState = true;
         if (drawBorderBgToggle.checked && isNiri)
             actions.drawBorderWithBackground = true;
+        if (isNiri) {
+            applyCond(actions, "backgroundBlur", blurCond.triState);
+            applyCond(actions, "backgroundXray", xrayCond.triState);
+        }
+        if (noiseEnabled.checked && isNiri)
+            actions.backgroundNoise = noiseSlider.value / 100;
+        if (saturationEnabled.checked && isNiri)
+            actions.backgroundSaturation = saturationSlider.value / 100;
+
+        const floatX = parseInt(floatingXInput.text);
+        const floatY = parseInt(floatingYInput.text);
+        if (isNiri && !isNaN(floatX) && !isNaN(floatY)) {
+            actions.defaultFloatingX = floatX;
+            actions.defaultFloatingY = floatY;
+            if (floatingRelativeDropdown.currentValue && floatingRelativeDropdown.currentValue !== "top-left")
+                actions.defaultFloatingRelativeTo = floatingRelativeDropdown.currentValue;
+        }
 
         const minW = parseInt(minWidthInput.text);
         const maxW = parseInt(maxWidthInput.text);
@@ -241,14 +408,42 @@ FloatingWindow {
                 actions.pin = true;
             if (opaqueToggle.checked)
                 actions.opaque = true;
-            if (sizeInput.text.trim())
-                actions.size = sizeInput.text.trim();
-            if (moveInput.text.trim())
-                actions.move = moveInput.text.trim();
+            if (sizeWInput.text.trim())
+                actions.sizeWidth = sizeWInput.text.trim();
+            if (sizeHInput.text.trim())
+                actions.sizeHeight = sizeHInput.text.trim();
+            if (moveXInput.text.trim())
+                actions.moveX = moveXInput.text.trim();
+            if (moveYInput.text.trim())
+                actions.moveY = moveYInput.text.trim();
             if (monitorInput.text.trim())
                 actions.monitor = monitorInput.text.trim();
             if (hyprWorkspaceInput.text.trim())
                 actions.workspace = hyprWorkspaceInput.text.trim();
+        }
+
+        if (isMango) {
+            if (mangoTagsInput.text.trim())
+                actions.workspace = mangoTagsInput.text.trim();
+            if (mangoMonitorInput.text.trim())
+                actions.monitor = mangoMonitorInput.text.trim();
+            if (mangoSizeInput.text.trim()) {
+                const parts = mangoSizeInput.text.trim().split(/x/i);
+                if (parts.length === 2) {
+                    actions.sizeWidth = parts[0].trim();
+                    actions.sizeHeight = parts[1].trim();
+                }
+            }
+            if (mangoNoBlurToggle.checked)
+                actions.noblur = true;
+            if (mangoNoBorderToggle.checked)
+                actions.noborder = true;
+            if (mangoNoShadowToggle.checked)
+                actions.noshadow = true;
+            if (mangoNoRoundingToggle.checked)
+                actions.norounding = true;
+            if (mangoNoAnimToggle.checked)
+                actions.noanim = true;
         }
 
         const name = nameInput.text.trim() || matchCriteria.appId || I18n.tr("Rule");
@@ -260,6 +455,8 @@ FloatingWindow {
             actions: actions,
             enabled: true
         };
+        if (isNiri && extraMatchModel.count > 0)
+            ruleData.matches = matches;
 
         submitting = true;
 
@@ -267,23 +464,27 @@ FloatingWindow {
 
         if (isEditMode) {
             const ruleJson = JSON.stringify(ruleData);
-            Proc.runCommand("update-windowrule", ["dms", "config", "windowrules", "update", compositor, editingRule.id, ruleJson], (output, exitCode) => {
+            Proc.runCommand("update-windowrule", [Proc.dmsBin, "config", "windowrules", "update", compositor, editingRule.id, ruleJson], (output, exitCode) => {
                 root.submitting = false;
                 if (exitCode !== 0)
                     return;
                 if (shouldValidate)
                     NiriService.validate();
+                if (CompositorService.isMango)
+                    MangoService.reloadConfig();
                 root.ruleSubmitted();
                 root.hide();
             });
         } else {
             const ruleJson = JSON.stringify(ruleData);
-            Proc.runCommand("add-windowrule", ["dms", "config", "windowrules", "add", compositor, ruleJson], (output, exitCode) => {
+            Proc.runCommand("add-windowrule", [Proc.dmsBin, "config", "windowrules", "add", compositor, ruleJson], (output, exitCode) => {
                 root.submitting = false;
                 if (exitCode !== 0)
                     return;
                 if (shouldValidate)
                     NiriService.validate();
+                if (CompositorService.isMango)
+                    MangoService.reloadConfig();
                 root.ruleSubmitted();
                 root.hide();
             });
@@ -322,7 +523,7 @@ FloatingWindow {
             width: 20
             height: 20
             radius: 4
-            color: parent.indeterminate ? Theme.surfaceVariant : (checked ? Theme.primary : "transparent")
+            color: parent.indeterminate ? Theme.surfaceVariant : (checked ? Theme.primary : Theme.withAlpha(Theme.primary, 0))
             border.color: parent.indeterminate ? Theme.outlineButton : (checked ? Theme.primary : Theme.outlineButton)
             border.width: 2
             anchors.verticalCenter: parent.verticalCenter
@@ -367,6 +568,61 @@ FloatingWindow {
         color: Theme.surfaceHover
         border.color: hasFocus ? Theme.primary : Theme.outlineStrong
         border.width: hasFocus ? 2 : 1
+    }
+
+    // Tri-state toggle: 0 = unset (Inherit/Any), 1 = true, 2 = false
+    component MatchCond: Rectangle {
+        id: mc
+        property string label: ""
+        property int triState: 0
+        property string unsetLabel: I18n.tr("Default")
+        property bool readOnly: false
+        readonly property var stateText: [mc.unsetLabel, "true", "false"]
+        readonly property var stateColor: [Theme.surfaceVariantText, Theme.primary, Theme.error]
+
+        width: condRow.implicitWidth + Theme.spacingM * 2
+        height: root.inputFieldHeight
+        radius: Theme.cornerRadius
+        color: Theme.surfaceHover
+        border.width: 1
+        border.color: mc.triState === 0 ? Theme.outlineStrong : mc.stateColor[mc.triState]
+        opacity: mc.readOnly ? 0.4 : 1
+
+        Row {
+            id: condRow
+            anchors.centerIn: parent
+            spacing: Theme.spacingXS
+
+            StyledText {
+                text: mc.label
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surfaceText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Rectangle {
+                width: stateBadge.implicitWidth + Theme.spacingS * 2
+                height: 18
+                radius: 9
+                color: Theme.withAlpha(mc.stateColor[mc.triState], 0.15)
+                anchors.verticalCenter: parent.verticalCenter
+
+                StyledText {
+                    id: stateBadge
+                    anchors.centerIn: parent
+                    text: mc.stateText[mc.triState]
+                    font.pixelSize: Theme.fontSizeSmall - 2
+                    color: mc.stateColor[mc.triState]
+                }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            enabled: root.visible && !mc.readOnly
+            onClicked: mc.triState = (mc.triState + 1) % 3
+        }
     }
 
     FocusScope {
@@ -471,7 +727,7 @@ FloatingWindow {
                         anchors.fill: parent
                         font.pixelSize: Theme.fontSizeSmall
                         textColor: Theme.surfaceText
-                        placeholderText: isNiri ? I18n.tr("App ID regex (e.g. ^firefox$)") : I18n.tr("Class regex (e.g. ^firefox$)")
+                        placeholderText: isMango ? I18n.tr("App ID (e.g. firefox)") : isHyprland ? I18n.tr("Class regex (e.g. ^firefox$)") : I18n.tr("App ID regex (e.g. ^firefox$)")
                         backgroundColor: "transparent"
                         enabled: root.visible
                     }
@@ -489,7 +745,7 @@ FloatingWindow {
                             anchors.fill: parent
                             font.pixelSize: Theme.fontSizeSmall
                             textColor: Theme.surfaceText
-                            placeholderText: I18n.tr("Title regex (optional)")
+                            placeholderText: isMango ? I18n.tr("Title (optional)") : I18n.tr("Title regex (optional)")
                             backgroundColor: "transparent"
                             enabled: root.visible
                         }
@@ -509,8 +765,181 @@ FloatingWindow {
                         onClicked: {
                             if (!root.targetWindow?.title)
                                 return;
-                            titleInput.text = "^" + root.targetWindow.title + "$";
+                            titleInput.text = isMango ? root.targetWindow.title : "^" + root.targetWindow.title + "$";
                         }
+                    }
+                }
+
+                StyledText {
+                    width: parent.width
+                    visible: root.isNiri
+                    text: I18n.tr("The rule applies to any window matching one of these.")
+                    font.pixelSize: Theme.fontSizeSmall - 1
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.WordWrap
+                }
+
+                Repeater {
+                    model: extraMatchModel
+
+                    delegate: Row {
+                        width: parent.width
+                        spacing: Theme.spacingS
+
+                        InputField {
+                            width: (parent.width - removeMatchBtn.width - Theme.spacingS * 2) / 2
+                            hasFocus: extraAppId.activeFocus
+                            DankTextField {
+                                id: extraAppId
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: root.isNiri ? I18n.tr("App ID regex") : I18n.tr("Class regex")
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                                text: rowAppId
+                                onTextEdited: extraMatchModel.setProperty(index, "rowAppId", text)
+                            }
+                        }
+
+                        InputField {
+                            width: (parent.width - removeMatchBtn.width - Theme.spacingS * 2) / 2
+                            hasFocus: extraTitle.activeFocus
+                            DankTextField {
+                                id: extraTitle
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: I18n.tr("Title regex (optional)")
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                                text: rowTitle
+                                onTextEdited: extraMatchModel.setProperty(index, "rowTitle", text)
+                            }
+                        }
+
+                        DankActionButton {
+                            id: removeMatchBtn
+                            width: root.inputFieldHeight
+                            height: root.inputFieldHeight
+                            circular: false
+                            iconName: "close"
+                            iconSize: 16
+                            iconColor: Theme.surfaceVariantText
+                            tooltipText: I18n.tr("Remove match")
+                            tooltipSide: "left"
+                            onClicked: extraMatchModel.remove(index)
+                        }
+                    }
+                }
+
+                Item {
+                    width: parent.width
+                    height: root.inputFieldHeight
+                    visible: root.isNiri
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacingS
+
+                        DankIcon {
+                            name: "add"
+                            size: 18
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: I18n.tr("Add match")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: extraMatchModel.append({
+                            "rowAppId": "",
+                            "rowTitle": ""
+                        })
+                    }
+                }
+
+                SectionHeader {
+                    title: I18n.tr("Match Conditions")
+                    visible: isNiri || isHyprland
+                }
+
+                StyledText {
+                    width: parent.width
+                    visible: isNiri || isHyprland
+                    text: I18n.tr("Optional state-based conditions applied to the first match.")
+                    font.pixelSize: Theme.fontSizeSmall - 1
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.WordWrap
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: Theme.spacingS
+                    visible: isNiri || isHyprland
+
+                    MatchCond {
+                        id: condFloating
+                        label: I18n.tr("Floating")
+                    }
+                    MatchCond {
+                        id: condActive
+                        label: I18n.tr("Active")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condFocused
+                        label: I18n.tr("Focused")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condActiveInColumn
+                        label: I18n.tr("Active in Column")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condCastTarget
+                        label: I18n.tr("Cast Target")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condUrgent
+                        label: I18n.tr("Urgent")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condAtStartup
+                        label: I18n.tr("At Startup")
+                        visible: isNiri
+                    }
+                    MatchCond {
+                        id: condXwayland
+                        label: I18n.tr("XWayland")
+                        visible: isHyprland
+                    }
+                    MatchCond {
+                        id: condFullscreen
+                        label: I18n.tr("Fullscreen")
+                        visible: isHyprland
+                    }
+                    MatchCond {
+                        id: condPinned
+                        label: I18n.tr("Pinned")
+                        visible: isHyprland
+                    }
+                    MatchCond {
+                        id: condInitialised
+                        label: I18n.tr("Initialised")
+                        visible: isHyprland
                     }
                 }
 
@@ -520,15 +949,28 @@ FloatingWindow {
 
                 Flow {
                     width: parent.width
+                    spacing: Theme.spacingS
+                    visible: isNiri
+
+                    MatchCond {
+                        id: floatingCond
+                        label: I18n.tr("Float")
+                    }
+                }
+
+                Flow {
+                    width: parent.width
                     spacing: Theme.spacingL
 
                     CheckboxRow {
                         id: floatingToggle
                         label: I18n.tr("Float")
+                        visible: !isNiri
                     }
                     CheckboxRow {
                         id: maximizedToggle
                         label: I18n.tr("Maximize")
+                        visible: !isMango
                     }
                     CheckboxRow {
                         id: fullscreenToggle
@@ -549,7 +991,7 @@ FloatingWindow {
                 Row {
                     width: parent.width
                     spacing: Theme.spacingM
-                    visible: true
+                    visible: isNiri || isHyprland
 
                     Column {
                         width: (parent.width - Theme.spacingM) / 2
@@ -668,11 +1110,13 @@ FloatingWindow {
 
                 SectionHeader {
                     title: I18n.tr("Dynamic Properties")
+                    visible: isNiri || isHyprland
                 }
 
                 Row {
                     width: parent.width
                     spacing: Theme.spacingM
+                    visible: isNiri || isHyprland
 
                     CheckboxRow {
                         id: opacityEnabled
@@ -682,6 +1126,7 @@ FloatingWindow {
 
                     DankSlider {
                         id: opacitySlider
+                        wheelEnabled: false
                         width: parent.width - 100
                         minimum: 10
                         maximum: 100
@@ -710,7 +1155,7 @@ FloatingWindow {
                     }
                     CheckboxRow {
                         id: drawBorderBgToggle
-                        label: I18n.tr("Border with BG")
+                        label: I18n.tr("Border with Background")
                     }
                 }
 
@@ -777,6 +1222,7 @@ FloatingWindow {
 
                     DankSlider {
                         id: scrollFactorSlider
+                        wheelEnabled: false
                         width: parent.width - 120
                         minimum: 10
                         maximum: 200
@@ -789,6 +1235,7 @@ FloatingWindow {
                 Row {
                     width: parent.width
                     spacing: Theme.spacingM
+                    visible: isNiri || isHyprland
 
                     CheckboxRow {
                         id: cornerRadiusEnabled
@@ -798,6 +1245,7 @@ FloatingWindow {
 
                     DankSlider {
                         id: cornerRadiusSlider
+                        wheelEnabled: false
                         width: parent.width - 130
                         minimum: 0
                         maximum: 24
@@ -808,12 +1256,191 @@ FloatingWindow {
                 }
 
                 SectionHeader {
-                    title: I18n.tr("Size Constraints")
+                    title: I18n.tr("Background Effect")
+                    visible: isNiri
+                }
+
+                StyledText {
+                    width: parent.width
+                    visible: isNiri
+                    text: I18n.tr("Xray blurs only the wallpaper (efficient) and is the default when Blur is on. Set Xray to Off for regular full blur of everything beneath the window (more expensive).")
+                    font.pixelSize: Theme.fontSizeSmall - 1
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.WordWrap
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: Theme.spacingS
+                    visible: isNiri
+
+                    MatchCond {
+                        id: blurCond
+                        label: I18n.tr("Blur")
+                        unsetLabel: I18n.tr("Inherit")
+                        onTriStateChanged: {
+                            if (triState === 2)
+                                xrayCond.triState = 0;
+                        }
+                    }
+                    MatchCond {
+                        id: xrayCond
+                        label: I18n.tr("X-Ray")
+                        unsetLabel: I18n.tr("Inherit")
+                        readOnly: blurCond.triState === 2
+                    }
                 }
 
                 Row {
                     width: parent.width
                     spacing: Theme.spacingM
+                    visible: isNiri
+
+                    CheckboxRow {
+                        id: noiseEnabled
+                        label: I18n.tr("Noise")
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    DankSlider {
+                        id: noiseSlider
+                        wheelEnabled: false
+                        width: parent.width - 130
+                        minimum: 0
+                        maximum: 100
+                        value: 5
+                        enabled: noiseEnabled.checked
+                        opacity: enabled ? 1 : 0.4
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: isNiri
+
+                    CheckboxRow {
+                        id: saturationEnabled
+                        label: I18n.tr("Saturation")
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    DankSlider {
+                        id: saturationSlider
+                        wheelEnabled: false
+                        width: parent.width - 130
+                        minimum: 0
+                        maximum: 200
+                        value: 100
+                        enabled: saturationEnabled.checked
+                        opacity: enabled ? 1 : 0.4
+                    }
+                }
+
+                SectionHeader {
+                    title: I18n.tr("Floating Position")
+                    visible: isNiri
+                }
+
+                StyledText {
+                    width: parent.width
+                    visible: isNiri
+                    text: I18n.tr("Initial position for floating windows. Set both X and Y; anchor controls which corner/edge they're relative to.")
+                    font.pixelSize: Theme.fontSizeSmall - 1
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.WordWrap
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: isNiri
+
+                    Column {
+                        width: (parent.width - Theme.spacingM * 2) / 3
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("X")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: floatingXInput.activeFocus
+                            DankTextField {
+                                id: floatingXInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "px"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: (parent.width - Theme.spacingM * 2) / 3
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("Y")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: floatingYInput.activeFocus
+                            DankTextField {
+                                id: floatingYInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "px"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: (parent.width - Theme.spacingM * 2) / 3
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("Anchor")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        DankDropdown {
+                            id: floatingRelativeDropdown
+                            width: parent.width
+                            dropdownWidth: parent.width
+                            compactMode: true
+                            options: ["top-left", "top-right", "bottom-left", "bottom-right", "top", "bottom", "left", "right"]
+                        }
+                    }
+                }
+
+                SectionHeader {
+                    title: I18n.tr("Size Constraints")
+                    visible: isNiri || isHyprland
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: isNiri || isHyprland
 
                     Column {
                         width: (parent.width - Theme.spacingM * 3) / 4
@@ -982,11 +1609,11 @@ FloatingWindow {
                     visible: isHyprland
 
                     Column {
-                        width: (parent.width - Theme.spacingM) / 2
+                        width: (parent.width - Theme.spacingM * 3) / 4
                         spacing: Theme.spacingXS
 
                         StyledText {
-                            text: I18n.tr("Size")
+                            text: I18n.tr("X")
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceVariantText
                             width: parent.width
@@ -995,13 +1622,13 @@ FloatingWindow {
 
                         InputField {
                             width: parent.width
-                            hasFocus: sizeInput.activeFocus
+                            hasFocus: moveXInput.activeFocus
                             DankTextField {
-                                id: sizeInput
+                                id: moveXInput
                                 anchors.fill: parent
                                 font.pixelSize: Theme.fontSizeSmall
                                 textColor: Theme.surfaceText
-                                placeholderText: "800 600"
+                                placeholderText: "0"
                                 backgroundColor: "transparent"
                                 enabled: root.visible
                             }
@@ -1009,11 +1636,11 @@ FloatingWindow {
                     }
 
                     Column {
-                        width: (parent.width - Theme.spacingM) / 2
+                        width: (parent.width - Theme.spacingM * 3) / 4
                         spacing: Theme.spacingXS
 
                         StyledText {
-                            text: I18n.tr("Move")
+                            text: I18n.tr("Y")
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceVariantText
                             width: parent.width
@@ -1022,13 +1649,67 @@ FloatingWindow {
 
                         InputField {
                             width: parent.width
-                            hasFocus: moveInput.activeFocus
+                            hasFocus: moveYInput.activeFocus
                             DankTextField {
-                                id: moveInput
+                                id: moveYInput
                                 anchors.fill: parent
                                 font.pixelSize: Theme.fontSizeSmall
                                 textColor: Theme.surfaceText
-                                placeholderText: "100 100"
+                                placeholderText: "0"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: (parent.width - Theme.spacingM * 3) / 4
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("W")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: sizeWInput.activeFocus
+                            DankTextField {
+                                id: sizeWInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "800"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: (parent.width - Theme.spacingM * 3) / 4
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("H")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: sizeHInput.activeFocus
+                            DankTextField {
+                                id: sizeHInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "600"
                                 backgroundColor: "transparent"
                                 enabled: root.visible
                             }
@@ -1096,6 +1777,131 @@ FloatingWindow {
                     }
                 }
 
+                SectionHeader {
+                    title: I18n.tr("Mango Options")
+                    visible: isMango
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: Theme.spacingL
+                    visible: isMango
+
+                    CheckboxRow {
+                        id: mangoNoBlurToggle
+                        label: I18n.tr("No Blur")
+                    }
+                    CheckboxRow {
+                        id: mangoNoBorderToggle
+                        label: I18n.tr("No Border")
+                    }
+                    CheckboxRow {
+                        id: mangoNoShadowToggle
+                        label: I18n.tr("No Shadow")
+                    }
+                    CheckboxRow {
+                        id: mangoNoRoundingToggle
+                        label: I18n.tr("No Rounding")
+                    }
+                    CheckboxRow {
+                        id: mangoNoAnimToggle
+                        label: I18n.tr("No Anim")
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: isMango
+
+                    Column {
+                        width: (parent.width - Theme.spacingM) / 2
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("Tags")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: mangoTagsInput.activeFocus
+                            DankTextField {
+                                id: mangoTagsInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "1"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: (parent.width - Theme.spacingM) / 2
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("Monitor")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: mangoMonitorInput.activeFocus
+                            DankTextField {
+                                id: mangoMonitorInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "HDMI-A-1"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: Theme.spacingM
+                    visible: isMango
+
+                    Column {
+                        width: parent.width
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            text: I18n.tr("Size")
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            width: parent.width
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        InputField {
+                            width: parent.width
+                            hasFocus: mangoSizeInput.activeFocus
+                            DankTextField {
+                                id: mangoSizeInput
+                                anchors.fill: parent
+                                font.pixelSize: Theme.fontSizeSmall
+                                textColor: Theme.surfaceText
+                                placeholderText: "800x600"
+                                backgroundColor: "transparent"
+                                enabled: root.visible
+                            }
+                        }
+                    }
+                }
+
                 Item {
                     width: 1
                     height: Theme.spacingM
@@ -1120,7 +1926,7 @@ FloatingWindow {
                     width: Math.max(70, cancelText.contentWidth + Theme.spacingM * 2)
                     height: 36
                     radius: Theme.cornerRadius
-                    color: cancelArea.containsMouse ? Theme.surfaceTextHover : "transparent"
+                    color: cancelArea.containsMouse ? Theme.surfaceTextHover : Theme.withAlpha(Theme.surfaceTextHover, 0)
                     border.color: Theme.surfaceVariantAlpha
                     border.width: 1
 

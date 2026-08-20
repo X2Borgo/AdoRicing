@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -19,24 +18,33 @@ Card {
         anchors.centerIn: parent
         spacing: Theme.spacingS
         visible: !WeatherService.weather.available
+        z: 1
+
+        DankSpinner {
+            size: 24
+            visible: WeatherService.weather.loading
+            anchors.horizontalCenter: parent.horizontalCenter
+        }
 
         DankIcon {
             name: "cloud_off"
             size: 24
-            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.5)
+            color: Theme.surfaceTextSecondary
+            visible: !WeatherService.weather.loading
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
         StyledText {
-            text: WeatherService.weather.loading ? I18n.tr("Loading...") : I18n.tr("No Weather")
+            text: I18n.tr("No Weather")
             font.pixelSize: Theme.fontSizeSmall
-            color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+            color: Theme.surfaceTextMedium
+            visible: !WeatherService.weather.loading
             anchors.horizontalCenter: parent.horizontalCenter
         }
 
-        Button {
+        DankButton {
             text: I18n.tr("Refresh")
-            flat: true
+            buttonHeight: 32
             visible: !WeatherService.weather.loading
             anchors.horizontalCenter: parent.horizontalCenter
             onClicked: WeatherService.forceRefresh()
@@ -77,7 +85,7 @@ Card {
             StyledText {
                 text: WeatherService.getWeatherCondition(WeatherService.weather.wCode)
                 font.pixelSize: Theme.fontSizeSmall
-                color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.7)
+                color: Theme.surfaceTextMedium
                 elide: Text.ElideRight
                 width: parent.parent.parent.width - 48 - Theme.spacingL * 2
                 horizontalAlignment: Text.AlignLeft
