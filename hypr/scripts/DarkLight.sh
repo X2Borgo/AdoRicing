@@ -13,9 +13,6 @@ swaync_style="$HOME/.config/swaync/style.css"
 ags_style="$HOME/.config/ags/user/style.css"
 SCRIPTSDIR="$HOME/.config/hypr/scripts"
 notif="$HOME/.config/swaync/images/bell.png"
-wallust_rofi="$HOME/.config/wallust/templates/colors-rofi.rasi"
-
-kitty_conf="$HOME/.config/kitty/kitty.conf"
 
 wallust_config="$HOME/.config/wallust/wallust.toml"
 pallete_dark="dark16"
@@ -117,20 +114,7 @@ if command -v ags >/dev/null 2>&1; then
     fi
 fi
 
-# kitty background color change
-if [ "$next_mode" = "Dark" ]; then
-    sed -i '/^foreground /s/^foreground .*/foreground #dddddd/' "${kitty_conf}"
-	sed -i '/^background /s/^background .*/background #000000/' "${kitty_conf}"
-	sed -i '/^cursor /s/^cursor .*/cursor #dddddd/' "${kitty_conf}"
-else
-	sed -i '/^foreground /s/^foreground .*/foreground #000000/' "${kitty_conf}"
-	sed -i '/^background /s/^background .*/background #dddddd/' "${kitty_conf}"
-	sed -i '/^cursor /s/^cursor .*/cursor #000000/' "${kitty_conf}"
-fi
-
-for pid_kitty in $(pidof kitty); do
-    kill -SIGUSR1 "$pid_kitty"
-done
+# Kitty uses the static Ado theme and is intentionally not changed by dark/light switching.
 
 # Set Dynamic Wallpaper for Dark or Light Mode
 if [ "$next_mode" = "Dark" ]; then
@@ -159,12 +143,7 @@ sed -i "s|^color_scheme_path=.*$|color_scheme_path=$qt6ct_color_scheme|" "$HOME/
 kvantummanager --set "$kvantum_theme"
 
 
-# set the rofi color for background
-if [ "$next_mode" = "Dark" ]; then
-    sed -i '/^background:/s/.*/background: rgba(0,0,0,0.7);/' $wallust_rofi
-else
-    sed -i '/^background:/s/.*/background: rgba(255,255,255,0.9);/' $wallust_rofi
-fi
+# Rofi uses the static Ado theme and is intentionally not changed by dark/light switching.
 
 
 # GTK themes and icons switching
@@ -264,4 +243,3 @@ sleep 0.5
 notify-send -u low -i "$notif" " Themes switched to:" " $next_mode Mode"
 
 exit 0
-

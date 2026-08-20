@@ -55,12 +55,63 @@ hl.env("MOZ_ENABLE_WAYLAND", "1")
 -- ## electron >28 apps (may help) ###
 -- https://www.electronjs.org/docs/latest/api/environment-variables
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
--- ## NVIDIA ###
--- This is from Hyprland Wiki. Below will be activated nvidia gpu detected
--- See hyprland wiki https://wiki.hyprland.org/Nvidia/#environment-variables
-hl.env("LIBVA_DRIVER_NAME", "nvidia")
-hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
-hl.env("NVD_BACKEND", "direct")
+-- ## Hybrid Intel/NVIDIA graphics ###
+-- Prefer the Quadro only when its driver has successfully bound the device.
+-- AQ_DRM_DEVICES is a COLON-separated list, so /dev/dri/by-path/pci-0000:01:00.0-card
+-- cannot be used here: aquamarine splits it on its own colons and finds no GPUs at all,
+-- which kills the DRM backend and aborts startup. Resolve the stable PCI address to its
+-- colon-free /dev/dri/cardN node instead, so boot-order numbering still doesn't matter.
+local nvidia_pci = "0000:01:00.0"
+local intel_pci = "0000:00:02.0"
+
+local function readable(path)
+  local file = io.open(path, "r")
+  if not file then
+    return false
+  end
+  file:close()
+  return true
+end
+
+-- Returns "/dev/dri/cardN" for a PCI address, or nil if the driver hasn't bound it.
+local function card_node_for(pci_address)
+  for card = 0, 7 do
+    if readable("/sys/bus/pci/devices/" .. pci_address .. "/drm/card" .. card .. "/dev") then
+      return "/dev/dri/card" .. card
+    end
+  end
+  return nil
+end
+
+local nvidia_card = card_node_for(nvidia_pci)
+local intel_card = card_node_for(intel_pci)
+
+local nvidia_ready = readable("/proc/driver/nvidia/gpus/" .. nvidia_pci .. "/information")
+  and nvidia_card ~= nil
+local nvidia_vaapi_ready = readable("/usr/lib/x86_64-linux-gnu/dri/nvidia_drv_video.so")
+
+-- Leave AQ_DRM_DEVICES unset if neither node resolved: aquamarine's own probing is a far
+-- better fallback than an explicit list that names nothing.
+if nvidia_ready and intel_card then
+  hl.env("AQ_DRM_DEVICES", nvidia_card .. ":" .. intel_card)
+  hl.env("GBM_BACKEND", "nvidia-drm")
+  hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+elseif nvidia_ready then
+  hl.env("AQ_DRM_DEVICES", nvidia_card)
+  hl.env("GBM_BACKEND", "nvidia-drm")
+  hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+elseif intel_card then
+  hl.env("AQ_DRM_DEVICES", intel_card)
+end
+
+-- Rendering and video decoding are selected independently. If NVDEC's VA-API
+-- bridge is unavailable, keep decoding on Intel instead of falling back to CPU.
+if nvidia_ready and nvidia_vaapi_ready then
+  hl.env("LIBVA_DRIVER_NAME", "nvidia")
+  hl.env("NVD_BACKEND", "direct")
+else
+  hl.env("LIBVA_DRIVER_NAME", "iHD")
+end
 hl.env("GSK_RENDERER", "ngl")
 -- ## additional ENV's for nvidia. Caution, activate with care ###
 -- env = GBM_BACKEND,nvidia-drm

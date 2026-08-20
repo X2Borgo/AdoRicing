@@ -113,57 +113,16 @@ wait_for_templates() {
 # Run wallust (silent) to regenerate templates defined in ~/.config/wallust/wallust.toml
 # -s is used in this repo to keep things quiet and avoid extra prompts
 start_ts=$(date +%s)
-wallust run -s "$wallpaper_path" || true
+wallust run --skip-sequences -s "$wallpaper_path" || true
 wallust_targets=(
-  "$HOME/.config/waybar/wallust/colors-waybar.css"
-  "$HOME/.config/rofi/wallust/colors-rofi.rasi"
+  "$HOME/.config/hypr/wallust/wallust-hyprland.conf"
+  "$HOME/.config/quickshell/qml_color.json"
+  "$HOME/.config/cava/config"
 )
 wait_for_templates "$start_ts" "${wallust_targets[@]}" || true
 
-# Run kitty-only wallust config to keep terminal palette separate
-run_wallust_with_config() {
-  local cfg="$1"
-  if wallust run --help 2>&1 | grep -q -E '(^|[[:space:]])-c([,[:space:]]|$)|--config'; then
-    wallust run -s -c "$cfg" "$wallpaper_path" || true
-  else
-    WALLUST_CONFIG="$cfg" wallust run -s "$wallpaper_path" || true
-  fi
-}
-
-kitty_cfg="$HOME/.config/wallust/wallust-kitty.toml"
-if [ -f "$kitty_cfg" ]; then
-  kitty_ts=$(date +%s)
-  run_wallust_with_config "$kitty_cfg"
-  wait_for_templates "$kitty_ts" "$HOME/.config/kitty/kitty-themes/01-Wallust.conf" || true
-fi
-
-# Reload kitty colors when wallpaper-based theme is active
-kitty_wallust_theme="$HOME/.config/kitty/kitty-themes/01-Wallust.conf"
-if [ -s "$kitty_wallust_theme" ]; then
-  if command -v kitty >/dev/null 2>&1; then
-    kitty @ load-config >/dev/null 2>&1 || true
-    kitty @ set-colors --all --configured "$kitty_wallust_theme" >/dev/null 2>&1 || true
-  fi
-  if pidof kitty >/dev/null 2>&1; then
-    for pid in $(pidof kitty); do
-      kill -SIGUSR1 "$pid" 2>/dev/null || true
-    done
-  fi
-fi
-
-# Normalize Ghostty palette syntax in case ':' was used by older files
-if [ -f "$HOME/.config/ghostty/wallust.conf" ]; then
-  sed -i -E 's/^(\s*palette\s*=\s*)([0-9]{1,2}):/\1\2=/' "$HOME/.config/ghostty/wallust.conf" 2>/dev/null || true
-fi
-
-# Light wait for Ghostty colors file to be present then signal Ghostty to reload (SIGUSR2)
-for _ in 1 2 3; do
-  [ -s "$HOME/.config/ghostty/wallust.conf" ] && break
-  sleep 0.1
-done
-if pidof ghostty >/dev/null; then
-  for pid in $(pidof ghostty); do kill -SIGUSR2 "$pid" 2>/dev/null || true; done
-fi
+# Rofi, Kitty, and Ghostty use static themes in this setup. Do not generate or apply
+# Wallust terminal/launcher colors here.
 
 # Prompt Waybar to reload colors
 if command -v waybar-msg >/dev/null 2>&1; then

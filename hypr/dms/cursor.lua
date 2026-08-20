@@ -2,5 +2,5 @@
 
 hl.env("HYPRCURSOR_THEME", "AdoCursorTheme")
 hl.env("XCURSOR_THEME", "AdoCursorTheme")
-hl.env("HYPRCURSOR_SIZE", "24")
-hl.env("XCURSOR_SIZE", "24")
+hl.env("HYPRCURSOR_SIZE", "26")
+hl.env("XCURSOR_SIZE", "26")

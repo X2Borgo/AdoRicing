@@ -22,9 +22,11 @@ main() {
     current_target=$(readlink -f "$waybar_style")
     current_name=$(basename "$current_target" .css)
 
-    # gather all style names (without .css) into an array
+    # gather all non-Wallust style names (without .css) into an array.
+    # Waybar is kept on static styles in this setup.
     mapfile -t options < <(
         find -L "$waybar_styles" -maxdepth 1 -type f -name '*.css' \
+            ! -exec grep -qiE 'wallust|colors-waybar\.css' {} \; \
             -exec basename {} .css \; \
             | sort
     )

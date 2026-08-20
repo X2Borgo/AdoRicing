@@ -31,11 +31,12 @@ table.insert(ctx.autostart, { cmd = "swww-daemon --format xrgb" })
 -- ## Startup ###
 table.insert(ctx.autostart, { cmd = "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" })
 table.insert(ctx.autostart, { cmd = "systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" })
-table.insert(ctx.autostart, { cmd = "kitty", rules = { workspace = "workspace 1 silent" } })
+table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/LaunchKitty.sh", rules = { workspace = "workspace 1 silent" } })
+table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/SaveKittySession.sh --watch" })
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/Polkit.sh" })
 table.insert(ctx.autostart, { cmd = "nm-applet --indicator" })
 table.insert(ctx.autostart, { cmd = "nm-tray" })
-table.insert(ctx.autostart, { cmd = "swaync" })
+-- DMS owns org.freedesktop.Notifications; do not start SwayNC alongside it.
 -- exec-once = ags
 -- exec-once = blueman-applet
 -- exec-once = rog-control-center

@@ -17,5 +17,7 @@ end
 -- Converted from UserConfigs/Startup_Apps.conf
 -- /* ---- 💫 https://github.com/LinuxBeginnings 💫 ---- */  #
 -- Commands and Apps to be executed at launch
-table.insert(ctx.autostart, { cmd = "bash -lc 'pgrep -x kdeconnectd >/dev/null || /usr/bin/kdeconnectd'" })
+table.insert(ctx.autostart, { cmd = "systemctl --user start kdeconnectd.service" })
+-- ydotool daemon: lets the keyboard scroller emit mouse-wheel scroll (see configs/Keybinds.lua)
+table.insert(ctx.autostart, { cmd = "bash -lc 'pgrep -x ydotoold >/dev/null || ydotoold'" })
 return true

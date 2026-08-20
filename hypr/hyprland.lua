@@ -85,8 +85,6 @@ hl.bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }), {
   description = "previous existing workspace",
 })
 
-hl.env("GBM_BACKEND", "nvidia-drm")
-hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 hl.env("XDG_SESSION_TYPE", "wayland")
 
 require("dms.cursor")

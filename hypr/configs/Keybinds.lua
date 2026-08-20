@@ -38,11 +38,12 @@ require_once("UserConfigs.01-UserDefaults")
 -- Common shortcuts
 -- bindr = $mainMod, $mainMod_L, exec, pkill rofi || rofi -show drun -modi drun,filebrowser,run,window # Super Key to Launch rofi menu
 keybind((vars["mainMod"] or "") .. " + D", hl.dsp.exec_cmd("pkill rofi || true && rofi -show drun -modi drun,filebrowser,run,window"), { desc = "app launcher" })
+keybind((vars["mainMod"] or "") .. " SHIFT + D", hl.dsp.exec_cmd("dms ipc call app-inbox toggle"), { desc = "app inbox" })
 keybind((vars["mainMod"] or "") .. " + B", hl.dsp.exec_cmd("xdg-open \"https://\""), { desc = "open default browser" })
 keybind((vars["mainMod"] or "") .. " + A", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/OverviewToggle.sh"), { desc = "desktop overview" })
 -- bindd = $mainMod, A, ags overview, exec, pkill rofi || true && ags -t 'overview' # desktop overview (if installed)
 -- bindd = $mainMod, A, Quickshell overview, global, quickshell:overviewToggle # desktop overview (if installed)
-keybind((vars["mainMod"] or "") .. " + Return", hl.dsp.exec_cmd((vars["term"] or "")), { desc = "Open terminal" })
+keybind((vars["mainMod"] or "") .. " + Return", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/LaunchKitty.sh"), { desc = "open or restore terminal" })
 keybind((vars["mainMod"] or "") .. " + E", hl.dsp.exec_cmd((vars["files"] or "")), { desc = "file manager" })
 -- FEATURES / EXTRAS
 keybind((vars["mainMod"] or "") .. " + T", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/ThemeChanger.sh"), { desc = "Global theme switcher using Wallust" })
@@ -94,12 +95,12 @@ keybind((vars["mainMod"] or "") .. " CTRL + F11", hl.dsp.workspace.move({ monito
 keybind((vars["mainMod"] or "") .. " CTRL + F12", hl.dsp.workspace.move({ monitor = "d" }), { desc = "move workspace to down monitor" })
 -- ### SYSTEM ####
 keybind("CTRL ALT + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"), { desc = "exit Hyprland" })
-keybind((vars["mainMod"] or "") .. " + Q", hl.dsp.window.close(), { desc = "close active window" })
+keybind((vars["mainMod"] or "") .. " + Q", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/SmartClose.sh"), { desc = "close active window (save Kitty session)" })
 keybind((vars["mainMod"] or "") .. " SHIFT + Q", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/KillActiveProcess.sh"), { desc = "Terminate active process" })
 keybind((vars["mainMod"] or "") .. " + L", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/LockScreen.sh"), { desc = "lock screen" })
 keybind("CTRL ALT + L", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/LockScreen.sh"), { desc = "lock screen" })
 keybind("CTRL ALT + P", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Wlogout.sh"), { desc = "powermenu" })
-keybind((vars["mainMod"] or "") .. " SHIFT + N", hl.dsp.exec_cmd("swaync-client -t -sw"), { desc = "notification panel" })
+keybind((vars["mainMod"] or "") .. " SHIFT + N", hl.dsp.exec_cmd("dms ipc call notifications toggle"), { desc = "notification panel" })
 keybind((vars["mainMod"] or "") .. " SHIFT + E", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Kool_Quick_Settings.sh"), { desc = "Quick settings menu" })
 -- Master Layout
 keybind((vars["mainMod"] or "") .. " CTRL + D", hl.dsp.exec_raw("layoutmsg removemaster"), { desc = "remove master" })
@@ -120,8 +121,11 @@ table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/ChangeLayout
 keybind("ALT + tab", hl.dsp.exec_raw("cyclenext"), { desc = "cycle next window" })
 keybind("ALT + tab", hl.dsp.window.bring_to_top(), { desc = "bring active to top" })
 -- Special Keys / Hot Keys
-keybind("XF86AudioRaiseVolume", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Volume.sh --inc"), { repeating = true, locked = true, desc = "volume up" })
-keybind("XF86AudioLowerVolume", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Volume.sh --dec"), { repeating = true, locked = true, desc = "volume down" })
+-- Keyboard scroller rebound from volume to mouse-wheel scroll.
+-- Needs ydotoold running (autostarted in UserConfigs/Startup_Apps.lua).
+-- If direction feels inverted, swap the two signs (0 1 <-> 0 -1).
+keybind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("ydotool mousemove -w -- 0 5"), { repeating = true, locked = true, desc = "scroll up (kbd scroller)" })
+keybind("XF86AudioLowerVolume", hl.dsp.exec_cmd("ydotool mousemove -w -- 0 -5"), { repeating = true, locked = true, desc = "scroll down (kbd scroller)" })
 keybind("ALT + XF86AudioRaiseVolume", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Volume.sh --inc-precise"), { repeating = true, locked = true, desc = "volume up precise" })
 keybind("ALT + XF86AudioLowerVolume", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Volume.sh --dec-precise"), { repeating = true, locked = true, desc = "volume down precise" })
 keybind("XF86AudioMicMute", hl.dsp.exec_cmd((vars["scriptsDir"] or "") .. "/Volume.sh --toggle-mic"), { locked = true, desc = "toggle mic mute" })

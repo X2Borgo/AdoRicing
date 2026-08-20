@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # /* ---- 💫 https://github.com/LinuxBeginnings 💫 ---- */  ##
-# Scripts for refreshing ags, waybar, rofi, swaync, wallust
+# Scripts for refreshing the DMS shell, rofi, and wallust
 
 SCRIPTSDIR=$HOME/.config/hypr/scripts
 UserScripts=$HOME/.config/hypr/UserScripts
@@ -12,16 +12,6 @@ file_exists() {
   else
     return 1 # File does not exist
   fi
-}
-
-reload_swaync() {
-  for _ in {1..10}; do
-    if swaync-client --reload-config >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.2
-  done
-  return 0
 }
 
 restart_shell() {
@@ -38,7 +28,7 @@ restart_shell() {
 }
 
 # Kill already running processes
-_ps=(rofi swaync)
+_ps=(rofi)
 for _prs in "${_ps[@]}"; do
   if pidof "${_prs}" >/dev/null; then
     pkill "${_prs}"
@@ -49,11 +39,6 @@ done
 pkill -f 'waybar-cava\..*\.conf' 2>/dev/null || true
 restart_shell
 sleep 0.3
-
-# relaunch swaync
-swaync >/dev/null 2>&1 &
-# reload swaync
-reload_swaync
 
 # Relaunching rainbow borders if the script exists
 sleep 1
