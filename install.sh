@@ -419,7 +419,7 @@ fi
 if [ "$INSTALL_CAELESTIA_SHELL" = true ]; then
     echo -e "\n${MAGENTA}Configuring local Caelestia shell repo...${NC}"
 
-    if [ ! -f "$SCRIPT_DIR/shell/shell.qml" ]; then
+    if [ ! -f "$SCRIPT_DIR/shell/quickshell/shell.qml" ]; then
         echo -e "${YELLOW}Local shell repo not found at $SCRIPT_DIR/shell. Skipping Caelestia setup.${NC}"
     else
         CAELESTIA_DEST="$HOME/.config/quickshell/caelestia"
