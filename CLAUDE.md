@@ -33,7 +33,7 @@ Targets Hyprland 0.55+ and its **Lua API** (`hl.*`), not the classic hyprlang `.
 
 ### Shell layer
 
-- `shell/` is a **git submodule** of upstream [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) (DMS), the primary top bar / desktop shell. Local edits under `shell/` diverge from upstream — treat carefully.
+- `shell/` is a **vendored copy** (tracked directly in this repo, not a submodule) of upstream [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) (DMS), the primary top bar / desktop shell. Local edits under `shell/` diverge from upstream — treat carefully.
 - Naming trap: the installer flag `--caelestia-shell` and the link target `~/.config/quickshell/caelestia` are **legacy names**; what actually lives there is DankMaterialShell, launched via `dms run --daemon`.
 - `hypr/scripts/LaunchShell.sh` starts the shell: it prefers `dms`, and falls back to **Waybar** with a notification if `dms` is missing or times out. Any shell-startup change must preserve this fallback.
 - `dms-plugins/` — DMS plugins (DockerLauncher, InstalI18n).
