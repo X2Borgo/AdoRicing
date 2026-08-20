@@ -1,0 +1,11 @@
+{
+  "id": "instalI18n",
+  "name": "Instal i18n Health",
+  "description": "Django translation health (untranslated/fuzzy/obsolete) across the Instal worktrees, with refresh and dashboard shortcuts",
+  "version": "1.0.0",
+  "author": "Alessandro Borghi",
+  "icon": "translate",
+  "type": "widget",
+  "component": "./I18nWidget.qml",
+  "permissions": ["settings_read", "settings_write"]
+}

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Blender
+GenericName=3D Creation Suite
+Comment=Create and edit 3D models, animations, and renders
+Exec=flatpak run org.blender.Blender %f
+Icon=org.blender.Blender
+Terminal=false
+Categories=Graphics;3DGraphics;
+MimeType=application/x-blender;
+StartupNotify=true
+StartupWMClass=Blender
+Keywords=3d;modeling;animation;rendering;

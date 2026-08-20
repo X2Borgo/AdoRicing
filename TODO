@@ -1,7 +1,47 @@
-update the install.sh to include also the terminal customizations ( kate and zsh with starship prompt )
+# TODO - AdoRicing Theme
 
-TO ADD:
-- rofi
-- starship
-- floorp
-- kate
+## Completed
+
+- [x] SDDM theme with cyberpunk aesthetics
+- [x] Kitty terminal configuration
+- [x] Starship prompt configuration
+- [x] ZSH configuration with Oh My Zsh
+- [x] Fastfetch custom branding
+- [x] Rofi launcher theme
+- [x] Zed theme pack
+- [x] JetBrainsMono Nerd Font installation
+- [x] Hyprland-first installer defaults
+- [x] Quickshell panel config path cleanup
+- [x] Clear separation between active Hyprland components and legacy Plasma components
+- [x] Integrate full `hypr/` config payload into installer
+- [x] Apply Ado palette to Hypr decorations and Hyprlock
+
+## Current Priorities
+
+- [x] Add Gmail to App Inbox after deployment status integration
+- [ ] Refine monitor profiles and workspace defaults for common setups
+- [ ] Hypridle tuning for laptop vs desktop presets
+- [ ] Mako notification theme
+- [ ] Wallpaper / monitor layout presets for Hyprland
+
+## Secondary Work
+
+- [ ] Full Quickshell setup beyond the current panel
+- [ ] Quickshell asset packaging and startup helpers
+- [ ] GRUB bootloader theme
+- [ ] Plymouth boot splash screen
+- [ ] GTK theme for cross-toolkit consistency
+- [ ] Cursor theme
+- [ ] Icon pack recommendation or custom icon set
+
+## Legacy / Compatibility
+
+- [ ] Decide whether to keep `kwin/` long-term or archive it externally
+- [ ] Decide whether Kate theme support should remain in the default docs
+- [ ] Keep optional SDDM support aligned with Hyprland session launching
+
+## Notes
+
+- Hyprland on Wayland is now the primary target
+- SDDM remains optional
+- Plasma-specific KWin integration is legacy only

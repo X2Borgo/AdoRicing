@@ -1,0 +1,389 @@
+<title>Instal i18n health</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --good: #0ca30c;
+    --good-text: #006300;
+    --warn: #fab219;
+    --warn-text: #8a5a00;
+    --crit: #d03b3b;
+    --crit-text: #b02929;
+    --dead: #c3c2b7;
+    --dead-text: #6f6d67;
+    --row-hover: rgba(11, 11, 11, 0.03);
+    --chip-bg: rgba(11, 11, 11, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+      --good-text: #35c235;
+      --warn-text: #fab219;
+      --crit-text: #e66767;
+      --dead: #52514e;
+      --dead-text: #a3a19a;
+      --row-hover: rgba(255, 255, 255, 0.04);
+      --chip-bg: rgba(255, 255, 255, 0.07);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+    --good-text: #35c235;
+    --warn-text: #fab219;
+    --crit-text: #e66767;
+    --dead: #52514e;
+    --dead-text: #a3a19a;
+    --row-hover: rgba(255, 255, 255, 0.04);
+    --chip-bg: rgba(255, 255, 255, 0.07);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; }
+  header h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  .picker { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .picker label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  .picker select {
+    font: 600 13.5px/1.3 system-ui, sans-serif; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; max-width: 340px; cursor: pointer;
+  }
+  .picker select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  header .meta { flex-basis: 100%; color: var(--ink-2); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 4px; }
+  header .meta .mono { font-size: 12px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 24px 0; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+  .tile .value { font-size: 30px; font-weight: 650; line-height: 1.2; margin-top: 2px; }
+  .tile .sub { font-size: 12px; color: var(--ink-2); }
+  .tile.t-crit .value { color: var(--crit-text); }
+  .tile.t-warn .value { color: var(--warn-text); }
+  .tile.t-dead .value { color: var(--dead-text); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink-2); margin: 0 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .filerow {
+    display: grid;
+    grid-template-columns: 118px 1fr 210px 24px;
+    gap: 16px; align-items: center;
+    width: 100%; text-align: left;
+    padding: 12px 16px;
+    background: none; border: 0; border-top: 1px solid var(--grid);
+    color: inherit; font: inherit; cursor: pointer;
+  }
+  .panel > div:first-child .filerow { border-top: 0; }
+  .filerow:hover { background: var(--row-hover); }
+  .filerow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .fname { display: flex; flex-direction: column; }
+  .fname .lang { font-weight: 650; font-size: 14px; }
+  .fname .domain { font-size: 12px; color: var(--muted); }
+
+  .bar { display: flex; gap: 2px; height: 12px; border-radius: 4px; }
+  .bar .seg { min-width: 3px; }
+  .bar .seg:first-child { border-radius: 4px 0 0 4px; }
+  .bar .seg:last-child { border-radius: 0 4px 4px 0; }
+  .bar .seg:only-child { border-radius: 4px; }
+  .s-good { background: var(--good); }
+  .s-warn { background: var(--warn); }
+  .s-crit { background: var(--crit); }
+
+  .counts { display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: flex-end; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 99px; background: var(--chip-bg);
+    color: var(--ink-2); white-space: nowrap;
+  }
+  .chip b { font-weight: 650; }
+  .chip.c-crit b { color: var(--crit-text); }
+  .chip.c-warn b { color: var(--warn-text); }
+  .chip.c-ok { color: var(--good-text); }
+  .chev { color: var(--muted); transition: transform 0.15s; text-align: center; }
+  .open .chev { transform: rotate(90deg); }
+
+  .detail { display: none; border-top: 1px solid var(--grid); background: var(--page); padding: 14px 16px 18px; }
+  .open + .detail { display: block; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tab {
+    font: 600 12.5px/1 system-ui, sans-serif; color: var(--ink-2);
+    background: none; border: 1px solid var(--border); border-radius: 99px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .entry { border-top: 1px solid var(--grid); padding: 9px 2px; font-size: 13px; }
+  .entry:first-child { border-top: 0; }
+  .entry .mid { font-weight: 600; overflow-wrap: anywhere; }
+  .entry .mstr { color: var(--ink-2); overflow-wrap: anywhere; }
+  .entry .mstr::before { content: "→ "; color: var(--muted); }
+  .entry .refs { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 2px; }
+  .more { color: var(--accent); background: none; border: 0; font: 600 12.5px system-ui, sans-serif; cursor: pointer; padding: 8px 2px; }
+
+  .search {
+    width: 100%; margin: 18px 0 10px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--ink); font: inherit; font-size: 14px;
+  }
+  .search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  footer code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: var(--chip-bg); padding: 1px 5px; border-radius: 4px; }
+
+  @media (max-width: 640px) {
+    .filerow { grid-template-columns: 90px 1fr 24px; }
+    .counts { grid-column: 1 / -1; justify-content: flex-start; }
+    .picker { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Instal i18n health</h1>
+    <div class="picker">
+      <label for="wt">Worktree</label>
+      <select id="wt"></select>
+    </div>
+    <div class="meta">
+      <span class="mono" id="locale-dir"></span>
+      <span>branch <b class="mono" id="branch"></b></span>
+      <span>catalog extracted <b id="pot-date"></b></span>
+      <span>snapshot <b>__GENERATED__</b></span>
+    </div>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="legend" role="note">
+    <span><i class="sw s-good"></i>translated</span>
+    <span><i class="sw s-warn"></i>fuzzy — auto-guessed, ignored at runtime until reviewed</span>
+    <span><i class="sw s-crit"></i>untranslated</span>
+    <span><i class="sw" style="background:var(--dead)"></i>obsolete — dead <span class="mono">#~</span> entries, not shown in the bar</span>
+  </div>
+
+  <div class="panel" id="files"></div>
+
+  <input type="search" class="search" id="search" placeholder="Filter strings in this worktree… (msgid, translation, or file reference)">
+  <div class="panel" id="search-results" hidden></div>
+
+  <footer>
+    Data collected with <code>msgfmt --statistics</code> and <code>msgattrib --untranslated | --only-fuzzy | --only-obsolete</code>
+    per <code>.po</code> file, across every checkout/worktree in the Instal workspace with a Django locale dir.
+    Counts reflect the catalogs as of each worktree's extraction date — run
+    <code>make messages</code> there first to pick up strings added to code since then. To refresh this page, re-run
+    <code>refresh.sh</code> and reload.
+  </footer>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const worktrees = data.worktrees;
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  const LANG = { de: "German", en: "English", es: "Spanish", fr: "French", it: "Italian", pt: "Portuguese", nl: "Dutch", pl: "Polish" };
+  const KINDS = [
+    ["untranslated_entries", "Untranslated"],
+    ["fuzzy_entries", "Fuzzy"],
+    ["obsolete_entries", "Obsolete"],
+  ];
+  const KIND_LABEL = { untranslated_entries: "untranslated", fuzzy_entries: "fuzzy", obsolete_entries: "obsolete" };
+
+  // --- worktree picker, grouped by repo ---
+  const sel = document.getElementById("wt");
+  const byRepo = new Map();
+  worktrees.forEach((w, i) => {
+    if (!byRepo.has(w.repo)) byRepo.set(w.repo, []);
+    byRepo.get(w.repo).push(i);
+  });
+  for (const [repo, idxs] of byRepo) {
+    const og = document.createElement("optgroup");
+    og.label = repo;
+    for (const i of idxs) {
+      const w = worktrees[i];
+      const problems = w.files.reduce((a, f) => a + f.untranslated + f.fuzzy, 0);
+      const o = document.createElement("option");
+      o.value = i;
+      o.textContent = `${w.name}  (${w.branch}) — ${problems ? problems + " to fix" : "clean"}`;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+
+  const entryHTML = (e, showStr) => `
+    <div class="entry">
+      <div class="mid mono">${esc(e.msgid)}</div>
+      ${showStr && e.msgstr ? `<div class="mstr">${esc(e.msgstr)}</div>` : ""}
+      ${e.refs.length ? `<div class="refs mono">${esc(e.refs.join("  "))}</div>` : ""}
+    </div>`;
+
+  const PAGE = 30;
+  function renderList(container, entries, showStr) {
+    if (!entries.length) { container.innerHTML = `<div class="empty">None — clean.</div>`; return; }
+    let shown = PAGE;
+    const draw = () => {
+      container.innerHTML = entries.slice(0, shown).map(e => entryHTML(e, showStr)).join("")
+        + (entries.length > shown
+          ? `<button class="more">Show ${Math.min(PAGE, entries.length - shown)} more of ${entries.length - shown} remaining</button>`
+          : "");
+      const btn = container.querySelector(".more");
+      if (btn) btn.onclick = () => { shown += PAGE; draw(); };
+    };
+    draw();
+  }
+
+  const searchEl = document.getElementById("search");
+  const resultsEl = document.getElementById("search-results");
+
+  function render(w) {
+    document.getElementById("locale-dir").textContent = `${w.name}/${w.locale_dir}`;
+    document.getElementById("branch").textContent = w.branch;
+    document.getElementById("pot-date").textContent = (w.pot_date || "?").replace(/\+0000$/, " UTC");
+
+    // stat tiles
+    const files = w.files;
+    const sum = k => files.reduce((a, f) => a + f[k], 0);
+    const total = sum("translated") + sum("fuzzy") + sum("untranslated");
+    const obsolete = files.reduce((a, f) => a + f.obsolete_entries.length, 0);
+    const langs = new Set(files.map(f => f.lang)).size;
+    const domains = new Set(files.map(f => f.domain)).size;
+    const tiles = [
+      ["", "Strings in catalog", total, `${langs} language${langs > 1 ? "s" : ""} × ${domains} domain${domains > 1 ? "s" : ""}`],
+      ["t-crit", "Untranslated", sum("untranslated"), "fall back to raw msgid"],
+      ["t-warn", "Fuzzy", sum("fuzzy"), "need human review"],
+      ["t-dead", "Obsolete", obsolete, "safe to purge"],
+    ];
+    document.getElementById("tiles").innerHTML = tiles.map(([cls, label, value, sub]) => `
+      <div class="tile ${cls}">
+        <div class="label">${label}</div>
+        <div class="value">${value.toLocaleString("en")}</div>
+        <div class="sub">${sub}</div>
+      </div>`).join("");
+
+    // per-file rows
+    const filesEl = document.getElementById("files");
+    filesEl.innerHTML = "";
+    files.forEach(f => {
+      const t = f.translated + f.fuzzy + f.untranslated;
+      const seg = (n, cls, name) => n ? `<div class="seg ${cls}" style="flex:${n}" title="${name}: ${n}"></div>` : "";
+      const holder = document.createElement("div");
+      holder.innerHTML = `
+        <button class="filerow" aria-expanded="false">
+          <span class="fname">
+            <span class="lang">${LANG[f.lang] || f.lang}</span>
+            <span class="domain mono">${f.lang}/${f.domain}.po</span>
+          </span>
+          <span class="bar" role="img" aria-label="${f.translated} translated, ${f.fuzzy} fuzzy, ${f.untranslated} untranslated of ${t}">
+            ${seg(f.translated, "s-good", "translated")}${seg(f.fuzzy, "s-warn", "fuzzy")}${seg(f.untranslated, "s-crit", "untranslated")}
+          </span>
+          <span class="counts">
+            ${f.untranslated + f.fuzzy === 0
+              ? `<span class="chip c-ok">✓ 100%</span>`
+              : `${f.untranslated ? `<span class="chip c-crit"><b>${f.untranslated}</b> missing</span>` : ""}
+                 ${f.fuzzy ? `<span class="chip c-warn"><b>${f.fuzzy}</b> fuzzy</span>` : ""}`}
+            ${f.obsolete_entries.length ? `<span class="chip"><b>${f.obsolete_entries.length}</b> dead</span>` : ""}
+          </span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button>
+        <div class="detail">
+          <div class="tabs" role="tablist">
+            ${KINDS.map(([k, name], j) => `
+              <button class="tab" role="tab" aria-selected="${j === 0}" data-kind="${k}">
+                ${name} (${f[k].length})
+              </button>`).join("")}
+          </div>
+          <div class="list"></div>
+        </div>`;
+      filesEl.appendChild(holder);
+
+      const row = holder.querySelector(".filerow");
+      const list = holder.querySelector(".list");
+      const show = kind => renderList(list, f[kind], kind !== "untranslated_entries");
+      row.addEventListener("click", () => {
+        const open = row.classList.toggle("open");
+        row.setAttribute("aria-expanded", open);
+        if (open) show(holder.querySelector('.tab[aria-selected="true"]').dataset.kind);
+      });
+      holder.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+        holder.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", "false"));
+        tab.setAttribute("aria-selected", "true");
+        show(tab.dataset.kind);
+      }));
+    });
+
+    // reset search for the new worktree
+    searchEl.value = "";
+    resultsEl.hidden = true;
+    resultsEl.innerHTML = "";
+  }
+
+  // --- search within the selected worktree ---
+  searchEl.addEventListener("input", () => {
+    const w = worktrees[sel.value | 0];
+    const q = searchEl.value.trim().toLowerCase();
+    if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
+    const hits = [];
+    outer:
+    for (const f of w.files)
+      for (const [k] of KINDS)
+        for (const e of f[k]) {
+          if (e.msgid.toLowerCase().includes(q) || e.msgstr.toLowerCase().includes(q)
+              || e.refs.some(r => r.toLowerCase().includes(q)))
+            hits.push({ f, k, e });
+          if (hits.length >= 60) break outer;
+        }
+    resultsEl.hidden = false;
+    resultsEl.innerHTML = hits.length
+      ? hits.map(({ f, k, e }) => `
+          <div class="entry" style="padding:9px 16px">
+            <div class="refs mono">${f.lang}/${f.domain}.po · ${KIND_LABEL[k]}</div>
+            <div class="mid mono">${esc(e.msgid)}</div>
+            ${e.msgstr ? `<div class="mstr">${esc(e.msgstr)}</div>` : ""}
+          </div>`).join("") + (hits.length >= 60 ? `<div class="empty" style="padding:10px 16px">More than 60 matches — narrow the search.</div>` : "")
+      : `<div class="empty" style="padding:12px 16px">No matches among untranslated, fuzzy, or obsolete strings. (Fully translated strings aren't indexed.)</div>`;
+  });
+
+  sel.addEventListener("change", () => render(worktrees[sel.value | 0]));
+  render(worktrees[0]);
+})();
+</script>

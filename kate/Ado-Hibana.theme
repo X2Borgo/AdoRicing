@@ -1,0 +1,449 @@
+{
+    "_comments": [
+        "Ado Hibana Theme for Kate/KWrite",
+        "Inspired by Ado's Hibana World Tour 2025 aesthetic",
+        "Dark cyberpunk design with neon cyan and magenta accents"
+    ],
+    "metadata": {
+        "copyright": [
+            "SPDX-FileCopyrightText: 2025 AdoRicing Project",
+            "SPDX-License-Identifier: GPL-3.0-or-later"
+        ],
+        "name": "Ado Hibana",
+        "revision": 1
+    },
+    "text-styles": {
+        "Alert": {
+            "background-color": "#ff4d4d",
+            "bold": true,
+            "selected-text-color": "#0f152e",
+            "text-color": "#ffffff"
+        },
+        "Annotation": {
+            "selected-text-color": "#d000ff",
+            "text-color": "#d000ff"
+        },
+        "Attribute": {
+            "selected-text-color": "#00f0ff",
+            "text-color": "#00f0ff"
+        },
+        "BaseN": {
+            "selected-text-color": "#ffe066",
+            "text-color": "#ffe066"
+        },
+        "BuiltIn": {
+            "selected-text-color": "#e666ff",
+            "text-color": "#e666ff"
+        },
+        "Char": {
+            "selected-text-color": "#50fae6",
+            "text-color": "#50fae6"
+        },
+        "Comment": {
+            "italic": true,
+            "selected-text-color": "#4d556d",
+            "text-color": "#4d556d"
+        },
+        "CommentVar": {
+            "italic": true,
+            "selected-text-color": "#5c8dff",
+            "text-color": "#5c8dff"
+        },
+        "Constant": {
+            "bold": true,
+            "selected-text-color": "#ffe066",
+            "text-color": "#ffe066"
+        },
+        "ControlFlow": {
+            "bold": true,
+            "selected-text-color": "#d000ff",
+            "text-color": "#d000ff"
+        },
+        "DataType": {
+            "selected-text-color": "#2b65ff",
+            "text-color": "#2b65ff"
+        },
+        "DecVal": {
+            "selected-text-color": "#ffe066",
+            "text-color": "#ffe066"
+        },
+        "Documentation": {
+            "selected-text-color": "#00e0b0",
+            "text-color": "#00e0b0"
+        },
+        "Error": {
+            "selected-text-color": "#ff4d4d",
+            "text-color": "#ff4d4d",
+            "underline": true
+        },
+        "Extension": {
+            "bold": true,
+            "selected-text-color": "#00f0ff",
+            "text-color": "#00f0ff"
+        },
+        "Float": {
+            "selected-text-color": "#ffe066",
+            "text-color": "#ffe066"
+        },
+        "Function": {
+            "selected-text-color": "#00f0ff",
+            "text-color": "#00f0ff"
+        },
+        "Import": {
+            "selected-text-color": "#d000ff",
+            "text-color": "#d000ff"
+        },
+        "Information": {
+            "selected-text-color": "#00e0b0",
+            "text-color": "#00e0b0"
+        },
+        "Keyword": {
+            "bold": true,
+            "selected-text-color": "#d000ff",
+            "text-color": "#d000ff"
+        },
+        "Normal": {
+            "selected-text-color": "#c0c0c0",
+            "text-color": "#c0c0c0"
+        },
+        "Operator": {
+            "selected-text-color": "#00f0ff",
+            "text-color": "#00f0ff"
+        },
+        "Others": {
+            "selected-text-color": "#50fae6",
+            "text-color": "#50fae6"
+        },
+        "Preprocessor": {
+            "selected-text-color": "#e666ff",
+            "text-color": "#e666ff"
+        },
+        "RegionMarker": {
+            "background-color": "#1a2035",
+            "selected-text-color": "#5c8dff",
+            "text-color": "#5c8dff"
+        },
+        "SpecialChar": {
+            "selected-text-color": "#d000ff",
+            "text-color": "#d000ff"
+        },
+        "SpecialString": {
+            "selected-text-color": "#ff6e6e",
+            "text-color": "#ff6e6e"
+        },
+        "String": {
+            "selected-text-color": "#50fae6",
+            "text-color": "#50fae6"
+        },
+        "Variable": {
+            "selected-text-color": "#80f7ff",
+            "text-color": "#80f7ff"
+        },
+        "VerbatimString": {
+            "selected-text-color": "#00e0b0",
+            "text-color": "#00e0b0"
+        },
+        "Warning": {
+            "selected-text-color": "#ffcc00",
+            "text-color": "#ffcc00"
+        }
+    },
+    "editor-colors": {
+        "BackgroundColor": "#0f152e",
+        "BracketMatching": "#1a2035",
+        "CodeFolding": "#2b65ff",
+        "CurrentLine": "#1a2035",
+        "CurrentLineNumber": "#00f0ff",
+        "IconBorder": "#0f152e",
+        "IndentationLine": "#1a2035",
+        "LineNumbers": "#4d556d",
+        "MarkBookmark": "#2b65ff",
+        "MarkBreakpointActive": "#ff4d4d",
+        "MarkBreakpointDisabled": "#4d556d",
+        "MarkBreakpointReached": "#50fae6",
+        "MarkError": "#ff4d4d",
+        "MarkExecution": "#00e0b0",
+        "MarkWarning": "#ffcc00",
+        "ModifiedLines": "#d000ff",
+        "ReplaceHighlight": "#50fae6",
+        "SavedLines": "#00e0b0",
+        "SearchHighlight": "#ffe066",
+        "Separator": "#1a2035",
+        "SpellChecking": "#ff6e6e",
+        "TabMarker": "#4d556d",
+        "TemplateBackground": "#1a2035",
+        "TemplateFocusedPlaceholder": "#d000ff",
+        "TemplatePlaceholder": "#5c8dff",
+        "TemplateReadOnlyPlaceholder": "#4d556d",
+        "TextSelection": "#1a2035",
+        "WordWrapMarker": "#1a2035"
+    },
+    "custom-styles": {
+        "Alerts": {
+            "Error": {
+                "selected-text-color": "#ff4d4d",
+                "text-color": "#ff4d4d",
+                "underline": true
+            },
+            "Information": {
+                "selected-text-color": "#00e0b0",
+                "text-color": "#00e0b0"
+            },
+            "Warning": {
+                "selected-text-color": "#ffcc00",
+                "text-color": "#ffcc00"
+            }
+        },
+        "Bash": {
+            "Builtin": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Command": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Option": {
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Path": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Variable": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            }
+        },
+        "C++": {
+            "Boost Macros": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Qt Macros": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Qt Types": {
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            }
+        },
+        "CSS": {
+            "At Rule": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Color": {
+                "selected-text-color": "#ffe066",
+                "text-color": "#ffe066"
+            },
+            "Property": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Selector Attribute": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Selector Class": {
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Selector Id": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Selector Pseudo": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            },
+            "Selector Tag": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Unit": {
+                "selected-text-color": "#ffe066",
+                "text-color": "#ffe066"
+            },
+            "Value": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            }
+        },
+        "Diff": {
+            "Added line": {
+                "selected-text-color": "#00e0b0",
+                "text-color": "#00e0b0"
+            },
+            "Changed line (new)": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Changed line (old)": {
+                "selected-text-color": "#ffcc00",
+                "text-color": "#ffcc00"
+            },
+            "Removed line": {
+                "selected-text-color": "#ff4d4d",
+                "text-color": "#ff4d4d"
+            }
+        },
+        "HTML": {
+            "Attribute": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Element": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "EntityRef": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            }
+        },
+        "JavaScript": {
+            "Built-in Objects": {
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            },
+            "JSON": {
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Module": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Object Member": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Template": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            }
+        },
+        "Markdown": {
+            "Code": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Emphasis Text": {
+                "italic": true,
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            },
+            "Header H1": {
+                "bold": true,
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Header H2": {
+                "bold": true,
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Header H3": {
+                "bold": true,
+                "selected-text-color": "#5c8dff",
+                "text-color": "#5c8dff"
+            },
+            "Header H4": {
+                "bold": true,
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            },
+            "Header H5": {
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            },
+            "Header H6": {
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            },
+            "Link": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff",
+                "underline": true
+            },
+            "List": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Reference-Link Name": {
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Reference-Link Target": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Reference-Link Target: Link": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Reference-Link: Email": {
+                "selected-text-color": "#50fae6",
+                "text-color": "#50fae6"
+            },
+            "Reference-Link: Link": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Strong Text": {
+                "bold": true,
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            }
+        },
+        "Python": {
+            "Builtin Function": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Import": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Special Variable": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            }
+        },
+        "Rust": {
+            "Attribute": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            },
+            "Macro": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "Self": {
+                "selected-text-color": "#80f7ff",
+                "text-color": "#80f7ff"
+            },
+            "Trait": {
+                "selected-text-color": "#2b65ff",
+                "text-color": "#2b65ff"
+            }
+        },
+        "XML": {
+            "Attribute": {
+                "selected-text-color": "#00f0ff",
+                "text-color": "#00f0ff"
+            },
+            "Element": {
+                "selected-text-color": "#d000ff",
+                "text-color": "#d000ff"
+            },
+            "EntityRef": {
+                "selected-text-color": "#e666ff",
+                "text-color": "#e666ff"
+            }
+        }
+    }
+}

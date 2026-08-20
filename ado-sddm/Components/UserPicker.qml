@@ -3,9 +3,9 @@
 // Displays user avatars for selection before password entry
 //
 
-import QtQuick 2.11
-import QtQuick.Layouts 1.11
-import QtQuick.Controls 2.4
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
 import Qt5Compat.GraphicalEffects
 
 Item {
@@ -15,9 +15,24 @@ Item {
     implicitWidth: parent.width
     
     property int selectedUserIndex: userModel.lastIndex
-    property string selectedUserName: userModel.data(userModel.index(selectedUserIndex, 0), 257) // 257 is NameRole
+    property string selectedUserName: ""
+    property alias userList: userRepeater
     
     signal userSelected(string username, int index)
+    
+    Component.onCompleted: {
+        // Auto-select the first user or last user based on config
+        if (config.ForceLastUser == "true" && userModel.lastIndex >= 0) {
+            selectedUserIndex = userModel.lastIndex
+            selectedUserName = userModel.data(userModel.index(selectedUserIndex, 0), 257) // NameRole
+            userSelected(selectedUserName, selectedUserIndex)
+        } else if (userModel.count > 0) {
+            selectedUserIndex = 0
+            selectedUserName = userModel.data(userModel.index(0, 0), 257)
+            userSelected(selectedUserName, selectedUserIndex)
+        }
+        fadeIn.start()
+    }
     
     // Grid layout for user avatars
     Row {
@@ -26,6 +41,7 @@ Item {
         spacing: 20
         
         Repeater {
+            id: userRepeater
             model: userModel
             
             delegate: Item {
@@ -155,9 +171,6 @@ Item {
     
     // Entrance animation
     opacity: 0
-    Component.onCompleted: {
-        fadeIn.start()
-    }
     
     NumberAnimation {
         id: fadeIn

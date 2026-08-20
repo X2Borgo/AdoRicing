@@ -1,0 +1,44 @@
+{
+  "format_on_save": "off",
+  "audio": {
+    "experimental.rodio_audio": false
+  },
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false
+  },
+  "minimap": {
+    "show": "never"
+  },
+  "autosave": {
+    "after_delay": {
+      "milliseconds": 1000
+    }
+  },
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": "Ado Hibana Soft",
+  "ui_font_family": "JetBrainsMono Nerd Font",
+  "buffer_font_family": "JetBrainsMono Nerd Font",
+  "cursor_shape": "bar",
+  "cursor_blink": false,
+  "vertical_scroll_margin": 3,
+  "preferred_line_length": 100,
+  "soft_wrap": "preferred_line_length",
+  "show_inline_completions": true,
+  "inlay_hints": {
+    "enabled": true
+  },
+  "terminal": {
+    "font_family": "JetBrainsMono Nerd Font",
+    "copy_on_select": true
+  },
+  "base_keymap": "VSCode",
+  "languages": {
+    "Python": {
+      "inlay_hints": {
+        "enabled": true
+      }
+    }
+  }
+}
