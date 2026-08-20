@@ -197,3 +197,8 @@ if [ -f '/home/alborghi/google-cloud-sdk/completion.zsh.inc' ]; then . '/home/al
 source <(ng completion script)
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
+
+# --- 5. LOCAL OVERRIDES ---
+# Machine-specific settings live outside the repo; this file is created by
+# install.sh and never committed.
+[ -f "$HOME/.config/ado/zsh.local.zsh" ] && source "$HOME/.config/ado/zsh.local.zsh"

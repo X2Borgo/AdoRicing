@@ -40,7 +40,7 @@ A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "H
 - Fastfetch branding and themed output
 
 ### Editor And Launcher
-- Zed themes: `Ado Hibana` (high-contrast) plus tuned `settings.json` and `keymap.json`
+- Zed themes: `Ado Hibana` (high-contrast) plus tuned `settings.shared.json` and `keymap.shared.json` (merged with git-ignored `*.local.json` overlays at install time)
 - Rofi theme for app launching and quick switching (`config.rasi` + `ado.rasi`)
 
 ### Browser
@@ -89,7 +89,17 @@ That installs:
 - Fonts
 - Quickshell panel config
 
-> Note: the `--caelestia-shell` flag and the `caelestia` link path are legacy names. The linked `shell/` submodule is **DankMaterialShell**, and the running shell is launched via `dms run`.
+> Note: the `--caelestia-shell` flag and the `caelestia` link path are legacy names. The linked `shell/` tree is **DankMaterialShell**, and the running shell is launched via `dms run`.
+
+### Symlink install model
+
+General configuration is **live-linked** from this repository: the installer symlinks repo files into place (`~/.config/hypr`, `~/.zshrc`, `~/.config/kitty/kitty.conf`, `~/.config/starship.toml`, Fastfetch, Rofi, the Quickshell panel, the Zed theme, the shell tree). Editing a file in the repo edits the live config — there is nothing to re-install, just reload the affected app.
+
+Machine-specific settings stay outside git via two overlays:
+- **ZSH**: `~/.config/ado/zsh.local.zsh` (created by the installer) is sourced at the end of the shared `.zshrc`. Never append to `~/.zshrc` itself — it is a symlink into the repo.
+- **Zed**: `~/.config/zed/settings.json` and `keymap.json` are **generated**, not linked — committed `zed/settings.shared.json` / `zed/keymap.shared.json` merged (via `jq`) with the git-ignored `zed/settings.local.json` / `zed/keymap.local.json` overlays (AI agent/model choices, tool auto-approval, machine-specific language servers). Re-run `./install.sh --zed` after changing either half.
+
+Steps that still generate files or run imperatively rather than linking: package/font/Oh My Zsh installation, `chsh`, the SDDM config under `/etc/sddm.conf.d/`, and the generated Zed settings above.
 
 ## Selective Installation
 
@@ -179,6 +189,8 @@ AdoRicing/
 ```
 
 ## Customization
+
+Because the config is symlinked, the paths below and their repo counterparts are the same files — edit whichever is more convenient and commit from the repo.
 
 ### Tweak the Hyprland theme
 Edit the Lua configs (Hyprland reloads them via `hyprctl reload`):

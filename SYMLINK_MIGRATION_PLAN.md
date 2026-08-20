@@ -1,5 +1,12 @@
 # Symlink Migration Plan
 
+> **Status (2026-08-20): implemented.** `install.sh` now links all repo-owned config
+> (hypr, kitty, starship, zsh, fastfetch, rofi, kate theme, quickshell panel, shell
+> tree, zed theme), Zed settings/keymap are generated from `*.shared.json` +
+> git-ignored `*.local.json` overlays, `.zshrc` sources `~/.config/ado/zsh.local.zsh`
+> instead of being appended to, and Floorp/Epiphany remnants are gone. Kept for the
+> rationale below; the live behavior in `install.sh` wins on any disagreement.
+
 ## Goal
 
 Move the installer from copying live configuration files into linking repo-owned configuration files. After this migration, the repository should be the source of truth for general configuration, while personal or machine-specific settings stay outside git.

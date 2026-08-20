@@ -45,6 +45,53 @@ backup_file() {
     fi
 }
 
+# Symlink install model: the repo is the live source of truth.
+# backup_path moves aside files, directories, and unmanaged symlinks.
+backup_path() {
+    local target="$1"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        local backup="$target.backup.$(date +%Y%m%d_%H%M%S)"
+        mv "$target" "$backup"
+        echo -e "${CYAN}Backed up $target -> $backup${NC}"
+    fi
+}
+
+ensure_parent() {
+    mkdir -p "$(dirname "$1")"
+}
+
+is_managed_link() {
+    local source="$1"
+    local target="$2"
+    [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]
+}
+
+link_file() {
+    local source="$1"
+    local target="$2"
+    if is_managed_link "$source" "$target"; then
+        echo -e "${GREEN}$target already linked${NC}"
+        return 0
+    fi
+    ensure_parent "$target"
+    backup_path "$target"
+    ln -s "$source" "$target"
+    echo -e "${GREEN}Linked $target -> $source${NC}"
+}
+
+link_dir() {
+    local source="$1"
+    local target="$2"
+    if is_managed_link "$source" "$target"; then
+        echo -e "${GREEN}$target already linked${NC}"
+        return 0
+    fi
+    ensure_parent "$target"
+    backup_path "$target"
+    ln -sn "$source" "$target"
+    echo -e "${GREEN}Linked $target -> $source${NC}"
+}
+
 append_component() {
     INSTALLED_COMPONENTS+=("$1")
 }
@@ -165,26 +212,18 @@ INSTALLED_COMPONENTS=()
 if [ "$INSTALL_HYPR_CONFIG" = true ]; then
     echo -e "\n${MAGENTA}Installing Hyprland config...${NC}"
 
-    HYPR_CONFIG_DIR="$HOME/.config/hypr"
-    HYPR_BACKUP_DIR="$HOME/.config/hypr.backup.$(date +%Y%m%d_%H%M%S)"
+    # Executable bits are fixed in the repo itself: the live config is a
+    # symlink into the repo, so never chmod through the link target.
+    if [ -f "$SCRIPT_DIR/hypr/initial-boot.sh" ]; then
+        chmod +x "$SCRIPT_DIR/hypr/initial-boot.sh"
+    fi
+    for scripts_dir in "$SCRIPT_DIR/hypr/scripts" "$SCRIPT_DIR/hypr/UserScripts"; do
+        if [ -d "$scripts_dir" ]; then
+            find "$scripts_dir" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
+        fi
+    done
 
-    if [ -d "$HYPR_CONFIG_DIR" ]; then
-        cp -a "$HYPR_CONFIG_DIR" "$HYPR_BACKUP_DIR"
-        echo -e "${CYAN}Backed up existing Hyprland config to $HYPR_BACKUP_DIR${NC}"
-    fi
-
-    mkdir -p "$HYPR_CONFIG_DIR"
-    cp -a "$SCRIPT_DIR/hypr/." "$HYPR_CONFIG_DIR/"
-
-    if [ -f "$HYPR_CONFIG_DIR/initial-boot.sh" ]; then
-        chmod +x "$HYPR_CONFIG_DIR/initial-boot.sh"
-    fi
-    if [ -d "$HYPR_CONFIG_DIR/scripts" ]; then
-        find "$HYPR_CONFIG_DIR/scripts" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
-    fi
-    if [ -d "$HYPR_CONFIG_DIR/UserScripts" ]; then
-        find "$HYPR_CONFIG_DIR/UserScripts" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
-    fi
+    link_dir "$SCRIPT_DIR/hypr" "$HOME/.config/hypr"
 
     if ! command_exists caelestia && ! command_exists qs && ! command_exists quickshell; then
         echo -e "${YELLOW}Warning: no shell launcher found (caelestia/qs/quickshell). Install Caelestia shell or Quickshell.${NC}"
@@ -243,9 +282,9 @@ if [ "$INSTALL_KITTY" = true ]; then
     install_package "kitty"
 
     KITTY_CONFIG_DIR="$HOME/.config/kitty"
-    mkdir -p "$KITTY_CONFIG_DIR"
-    backup_file "$KITTY_CONFIG_DIR/kitty.conf"
-    cp "$SCRIPT_DIR/terminal/kitty/kitty.conf" "$KITTY_CONFIG_DIR/kitty.conf"
+    link_file "$SCRIPT_DIR/terminal/kitty/kitty.conf" "$KITTY_CONFIG_DIR/kitty.conf"
+    link_file "$SCRIPT_DIR/terminal/kitty/ado-session.conf" "$KITTY_CONFIG_DIR/ado-session.conf"
+    link_file "$SCRIPT_DIR/terminal/kitty/tab_bar.py" "$KITTY_CONFIG_DIR/tab_bar.py"
 
     echo -e "${GREEN}Kitty configuration installed${NC}"
     append_component "Kitty"
@@ -261,10 +300,7 @@ if [ "$INSTALL_STARSHIP" = true ]; then
         echo -e "${GREEN}Starship is already installed${NC}"
     fi
 
-    STARSHIP_CONFIG_DIR="$HOME/.config"
-    mkdir -p "$STARSHIP_CONFIG_DIR"
-    backup_file "$STARSHIP_CONFIG_DIR/starship.toml"
-    cp "$SCRIPT_DIR/terminal/starship/starship.toml" "$STARSHIP_CONFIG_DIR/starship.toml"
+    link_file "$SCRIPT_DIR/terminal/starship/starship.toml" "$HOME/.config/starship.toml"
 
     echo -e "${GREEN}Starship configuration installed${NC}"
     append_component "Starship"
@@ -281,14 +317,17 @@ if [ "$INSTALL_ZSH" = true ]; then
         echo -e "${GREEN}Oh My Zsh already installed${NC}"
     fi
 
-    ZSHRC="$HOME/.zshrc"
-    backup_file "$ZSHRC"
-    cp "$SCRIPT_DIR/terminal/zsh/.zshrc" "$ZSHRC"
-
-    if ! grep -q "starship init zsh" "$ZSHRC" 2>/dev/null; then
-        echo "" >> "$ZSHRC"
-        echo "# Initialize Starship prompt" >> "$ZSHRC"
-        echo 'eval "$(starship init zsh)"' >> "$ZSHRC"
+    # ~/.zshrc is a symlink into the repo; never append to it. Starship and
+    # Fastfetch init live in terminal/zsh/.zshrc, machine-specific settings
+    # go in ~/.config/ado/zsh.local.zsh (sourced by the shared .zshrc).
+    link_file "$SCRIPT_DIR/terminal/zsh/.zshrc" "$HOME/.zshrc"
+    mkdir -p "$HOME/.config/ado"
+    if [ ! -f "$HOME/.config/ado/zsh.local.zsh" ]; then
+        {
+            echo "# Machine-specific zsh settings (not committed to AdoRicing)."
+            echo "# Sourced at the end of the shared ~/.zshrc."
+        } > "$HOME/.config/ado/zsh.local.zsh"
+        echo -e "${CYAN}Created ~/.config/ado/zsh.local.zsh for local overrides${NC}"
     fi
 
     if [ "$SHELL" != "$(command -v zsh)" ]; then
@@ -306,18 +345,8 @@ if [ "$INSTALL_FASTFETCH" = true ]; then
     install_package "fastfetch"
 
     FASTFETCH_CONFIG_DIR="$HOME/.config/fastfetch"
-    mkdir -p "$FASTFETCH_CONFIG_DIR"
-    cp "$SCRIPT_DIR/terminal/fastfetch/ado.jsonc" "$FASTFETCH_CONFIG_DIR/ado.jsonc"
-    cp "$SCRIPT_DIR/terminal/fastfetch/ado.png" "$FASTFETCH_CONFIG_DIR/ado.png"
-
-    ZSHRC="${ZSHRC:-$HOME/.zshrc}"
-    if [ -f "$ZSHRC" ] && ! grep -q "fastfetch --config ~/.config/fastfetch/ado.jsonc" "$ZSHRC" 2>/dev/null; then
-        echo "" >> "$ZSHRC"
-        echo "# Run fastfetch on terminal start" >> "$ZSHRC"
-        echo 'if command -v fastfetch >/dev/null 2>&1; then' >> "$ZSHRC"
-        echo '    fastfetch --config ~/.config/fastfetch/ado.jsonc' >> "$ZSHRC"
-        echo 'fi' >> "$ZSHRC"
-    fi
+    link_file "$SCRIPT_DIR/terminal/fastfetch/ado.jsonc" "$FASTFETCH_CONFIG_DIR/ado.jsonc"
+    link_file "$SCRIPT_DIR/terminal/fastfetch/ado.png" "$FASTFETCH_CONFIG_DIR/ado.png"
 
     echo -e "${GREEN}Fastfetch configuration installed${NC}"
     append_component "Fastfetch"
@@ -326,10 +355,7 @@ fi
 if [ "$INSTALL_KATE" = true ]; then
     echo -e "\n${MAGENTA}Installing Kate/KWrite theme...${NC}"
 
-    KATE_COLOR_DIR="$HOME/.local/share/org.kde.syntax-highlighting/themes"
-    mkdir -p "$KATE_COLOR_DIR"
-    backup_file "$KATE_COLOR_DIR/Ado-Hibana.theme"
-    cp "$SCRIPT_DIR/kate/Ado-Hibana.theme" "$KATE_COLOR_DIR/Ado-Hibana.theme"
+    link_file "$SCRIPT_DIR/kate/Ado-Hibana.theme" "$HOME/.local/share/org.kde.syntax-highlighting/themes/Ado-Hibana.theme"
 
     echo -e "${GREEN}Kate/KWrite theme installed${NC}"
     append_component "Kate/KWrite"
@@ -340,10 +366,8 @@ if [ "$INSTALL_ROFI" = true ]; then
     install_package "rofi"
 
     ROFI_CONFIG_DIR="$HOME/.config/rofi"
-    mkdir -p "$ROFI_CONFIG_DIR"
-    backup_file "$ROFI_CONFIG_DIR/config.rasi"
-    cp "$SCRIPT_DIR/rofi/config.rasi" "$ROFI_CONFIG_DIR/config.rasi"
-    cp "$SCRIPT_DIR/rofi/ado.rasi" "$ROFI_CONFIG_DIR/ado.rasi"
+    link_file "$SCRIPT_DIR/rofi/config.rasi" "$ROFI_CONFIG_DIR/config.rasi"
+    link_file "$SCRIPT_DIR/rofi/ado.rasi" "$ROFI_CONFIG_DIR/ado.rasi"
 
     echo -e "${GREEN}Rofi configuration installed${NC}"
     append_component "Rofi"
@@ -352,12 +376,41 @@ fi
 if [ "$INSTALL_ZED" = true ]; then
     echo -e "\n${MAGENTA}Installing Zed configuration...${NC}"
 
+    install_package "jq"
+
     ZED_CONFIG_DIR="$HOME/.config/zed"
-    ZED_THEME_DIR="$ZED_CONFIG_DIR/themes"
-    mkdir -p "$ZED_THEME_DIR"
-    backup_file "$ZED_CONFIG_DIR/settings.json"
-    cp "$SCRIPT_DIR/zed/Ado-Hibana.json" "$ZED_THEME_DIR/Ado-Hibana.json"
-    cp "$SCRIPT_DIR/zed/settings.json" "$ZED_CONFIG_DIR/settings.json"
+    mkdir -p "$ZED_CONFIG_DIR"
+    link_file "$SCRIPT_DIR/zed/Ado-Hibana.json" "$ZED_CONFIG_DIR/themes/Ado-Hibana.json"
+
+    # settings.json and keymap.json are GENERATED (not symlinked): shared
+    # committed defaults merged with an ignored per-machine local overlay.
+    generate_zed_config() {
+        local shared="$1"
+        local local_overlay="$2"
+        local target="$3"
+        local merge_expr="$4"
+        if [ -L "$target" ]; then
+            backup_path "$target"
+        fi
+        if [ -f "$local_overlay" ]; then
+            jq -s "$merge_expr" "$shared" "$local_overlay" > "$target.tmp"
+        else
+            cp "$shared" "$target.tmp"
+        fi
+        if cmp -s "$target.tmp" "$target" 2>/dev/null; then
+            rm "$target.tmp"
+            echo -e "${GREEN}$target already up to date${NC}"
+        else
+            backup_file "$target"
+            mv "$target.tmp" "$target"
+            echo -e "${GREEN}Generated $target${NC}"
+        fi
+    }
+
+    generate_zed_config "$SCRIPT_DIR/zed/settings.shared.json" "$SCRIPT_DIR/zed/settings.local.json" \
+        "$ZED_CONFIG_DIR/settings.json" '.[0] * .[1]'
+    generate_zed_config "$SCRIPT_DIR/zed/keymap.shared.json" "$SCRIPT_DIR/zed/keymap.local.json" \
+        "$ZED_CONFIG_DIR/keymap.json" '.[0] + .[1]'
 
     echo -e "${GREEN}Zed themes and settings installed${NC}"
     append_component "Zed"
@@ -369,17 +422,8 @@ if [ "$INSTALL_CAELESTIA_SHELL" = true ]; then
     if [ ! -f "$SCRIPT_DIR/shell/shell.qml" ]; then
         echo -e "${YELLOW}Local shell repo not found at $SCRIPT_DIR/shell. Skipping Caelestia setup.${NC}"
     else
-        CAELESTIA_CONFIG_ROOT="$HOME/.config/quickshell"
-        CAELESTIA_DEST="$CAELESTIA_CONFIG_ROOT/caelestia"
-        mkdir -p "$CAELESTIA_CONFIG_ROOT"
-
-        if [ -e "$CAELESTIA_DEST" ] && [ ! -L "$CAELESTIA_DEST" ]; then
-            mv "$CAELESTIA_DEST" "$CAELESTIA_DEST.backup.$(date +%Y%m%d_%H%M%S)"
-            echo -e "${CYAN}Backed up existing $CAELESTIA_DEST${NC}"
-        fi
-
-        ln -sfn "$SCRIPT_DIR/shell" "$CAELESTIA_DEST"
-        echo -e "${GREEN}Linked $CAELESTIA_DEST -> $SCRIPT_DIR/shell${NC}"
+        CAELESTIA_DEST="$HOME/.config/quickshell/caelestia"
+        link_dir "$SCRIPT_DIR/shell" "$CAELESTIA_DEST"
         echo -e "${YELLOW}Note: this only links the shell sources. The compiled Caelestia/qs.utils QML modules must already be installed for it to render.${NC}"
 
         if ! command_exists qs && ! command_exists caelestia; then
@@ -394,10 +438,8 @@ if [ "$INSTALL_QUICKSHELL" = true ]; then
     echo -e "\n${MAGENTA}Installing Quickshell panel config...${NC}"
 
     QUICKSHELL_CONFIG_DIR="$HOME/.config/quickshell/AdoRicing"
-    mkdir -p "$QUICKSHELL_CONFIG_DIR"
-    backup_file "$QUICKSHELL_CONFIG_DIR/main.qml"
-    cp "$SCRIPT_DIR/quickshell/main.qml" "$QUICKSHELL_CONFIG_DIR/main.qml"
-    cp "$SCRIPT_DIR/useful_images/Ado-Rose.svg" "$QUICKSHELL_CONFIG_DIR/Ado-Rose.svg"
+    link_file "$SCRIPT_DIR/quickshell/main.qml" "$QUICKSHELL_CONFIG_DIR/main.qml"
+    link_file "$SCRIPT_DIR/useful_images/Ado-Rose.svg" "$QUICKSHELL_CONFIG_DIR/Ado-Rose.svg"
 
     echo -e "${GREEN}Quickshell config installed${NC}"
     echo -e "${YELLOW}Make sure the quickshell binary itself is installed separately${NC}"

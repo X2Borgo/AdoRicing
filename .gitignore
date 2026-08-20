@@ -13,3 +13,11 @@ terminal/kitty/ikitty
 
 .gemini/
 gha-creds-*.json
+
+# Per-machine overlays (merged/sourced by install.sh, never committed)
+zed/settings.local.json
+zed/keymap.local.json
+terminal/zsh/*.local.zsh
+
+# Editor/backup droppings
+hypr/*.backup*
