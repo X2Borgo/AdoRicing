@@ -120,10 +120,10 @@ if [[ ! "$window_id" =~ ^[0-9]+$ || -z "$kitty_address" ]]; then
 fi
 
 if [[ "$state" == "clear" ]]; then
-  # Empty title: kitty drops the manual override and the tab shows nothing
-  # custom (falls back to the active window's automatic title).
+  # A single space keeps the manual override in place, so the tab renders
+  # blank instead of falling back to the live window title.
   kitten @ --to "$kitty_address" set-tab-title \
-    --match "window_id:$window_id" "" >/dev/null 2>&1 || true
+    --match "window_id:$window_id" " " >/dev/null 2>&1 || true
   emit_hook_result
   exit 0
 fi
