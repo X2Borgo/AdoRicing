@@ -31,7 +31,12 @@ resolve_state() {
   event="$(json_value '.hook_event_name')"
   case "$event" in
     SessionStart)
-      printf 'ready\n'
+      # /clear and /new start a fresh conversation (source "clear"); drop the
+      # tab title entirely instead of marking the stale one as ready.
+      case "$(json_value '.source')" in
+        clear|new) printf 'clear\n' ;;
+        *) printf 'ready\n' ;;
+      esac
       ;;
     UserPromptSubmit)
       printf 'working\n'
@@ -110,6 +115,15 @@ state="$(resolve_state)" || {
 window_id="${KITTY_WINDOW_ID:-}"
 kitty_address="${KITTY_LISTEN_ON:-}"
 if [[ ! "$window_id" =~ ^[0-9]+$ || -z "$kitty_address" ]]; then
+  emit_hook_result
+  exit 0
+fi
+
+if [[ "$state" == "clear" ]]; then
+  # Empty title: kitty drops the manual override and the tab shows nothing
+  # custom (falls back to the active window's automatic title).
+  kitten @ --to "$kitty_address" set-tab-title \
+    --match "window_id:$window_id" "" >/dev/null 2>&1 || true
   emit_hook_result
   exit 0
 fi
