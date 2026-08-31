@@ -62,8 +62,13 @@ resolve_state() {
         permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input)
           printf 'input\n'
           ;;
-        idle_prompt|agent_completed)
+        agent_completed)
           printf 'ready\n'
+          ;;
+        idle_prompt)
+          # Timer-driven nag, not a state change: leave the title alone so an
+          # idle session keeps whatever it was last labelled.
+          return 1
           ;;
         *) return 1 ;;
       esac
