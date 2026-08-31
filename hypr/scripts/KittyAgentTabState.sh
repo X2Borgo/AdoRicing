@@ -120,10 +120,10 @@ if [[ ! "$window_id" =~ ^[0-9]+$ || -z "$kitty_address" ]]; then
 fi
 
 if [[ "$state" == "clear" ]]; then
-  # A single space keeps the manual override in place, so the tab renders
-  # blank instead of falling back to the live window title.
+  # Freshly cleared conversation: label the tab "new" (a manual override)
+  # until the next event rebuilds a real title.
   kitten @ --to "$kitty_address" set-tab-title \
-    --match "window_id:$window_id" " " >/dev/null 2>&1 || true
+    --match "window_id:$window_id" "new" >/dev/null 2>&1 || true
   emit_hook_result
   exit 0
 fi
