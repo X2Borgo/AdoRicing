@@ -220,9 +220,26 @@ current_title="$(
   ' <<< "$kitty_state" 2>/dev/null
 )"
 
+if [[ "$agent" == "preserve" ]]; then
+  case "$current_title" in
+    "◆ "*|"⁇ "*|"◇ "*) agent="claude" ;;
+    "▶ "*|"? "*|"✓ "*) agent="codex" ;;
+    *)
+      # Ctrl+C/Escape in an ordinary shell must not create an agent marker.
+      emit_hook_result
+      exit 0
+      ;;
+  esac
+fi
+
 base_title="$(strip_state_prefix "$current_title")"
 base_title="${base_title//$'\n'/ }"
 base_title="${base_title//$'\r'/ }"
+# Trim whitespace, and treat the transient "new" label set on /clear as
+# empty, so the next event regenerates a fresh name instead of keeping it.
+base_title="${base_title#"${base_title%%[![:space:]]*}"}"
+base_title="${base_title%"${base_title##*[![:space:]]}"}"
+[[ "$base_title" == "new" ]] && base_title=""
 [[ -n "$base_title" ]] || base_title="Agent · ${PWD##*/}"
 
 case "$agent:$state" in
