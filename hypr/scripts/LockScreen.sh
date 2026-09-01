@@ -43,7 +43,8 @@ start_hyprlock_fallback() {
     command -v hyprlock >/dev/null 2>&1 || return 1
 
     if ! pidof hyprlock >/dev/null 2>&1; then
-        hyprlock -q >/dev/null 2>&1 &
+        # grace is a CLI flag since hyprlock 0.9.x (the general:grace option was removed)
+        hyprlock -q --grace 1 >/dev/null 2>&1 &
     fi
 
     return 0
