@@ -7,12 +7,7 @@
         {
           "advance_downwards": false
         }
-      ]
-    }
-  },
-  {
-    "context": "Editor",
-    "bindings": {
+      ],
       "ctrl-k ctrl-c": null
     }
   },

@@ -10,6 +10,18 @@
   "minimap": {
     "show": "never"
   },
+  "project_panel": {
+    "dock": "left"
+  },
+  "outline_panel": {
+    "dock": "right"
+  },
+  "git_panel": {
+    "dock": "left"
+  },
+  "agent": {
+    "dock": "right"
+  },
   "autosave": {
     "after_delay": {
       "milliseconds": 1000
@@ -24,8 +36,8 @@
   "cursor_blink": false,
   "vertical_scroll_margin": 3,
   "preferred_line_length": 100,
-  "soft_wrap": "preferred_line_length",
-  "show_inline_completions": true,
+  "soft_wrap": "prefer_line",
+  "show_edit_predictions": true,
   "inlay_hints": {
     "enabled": true
   },
