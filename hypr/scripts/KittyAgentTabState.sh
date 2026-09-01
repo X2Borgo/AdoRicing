@@ -14,6 +14,48 @@ json_value() {
   jq -r "$1 // empty" <<< "$payload" 2>/dev/null
 }
 
+# Background work tracking. A turn can end (Stop) while subagents are still
+# running, and the tab must keep the working marker instead of claiming the
+# agent is idle. One file per live agent, keyed by session.
+agent_state_dir() {
+  local sid
+  sid="$(json_value '.session_id')"
+  [[ -n "$sid" ]] || sid="win-${KITTY_WINDOW_ID:-unknown}"
+  printf '%s/ado-kitty-agents/%s' "${XDG_RUNTIME_DIR:-/tmp}" "${sid//[^A-Za-z0-9_-]/_}"
+}
+
+agent_token() {
+  local id
+  id="$(json_value '.agent_id')"
+  [[ -n "$id" ]] || id="anon"
+  printf '%s' "${id//[^A-Za-z0-9_-]/_}"
+}
+
+mark_agent_running() {
+  local dir
+  dir="$(agent_state_dir)" || return 0
+  mkdir -p "$dir" 2>/dev/null && : >"$dir/$(agent_token)" 2>/dev/null
+}
+
+mark_agent_done() {
+  local dir
+  dir="$(agent_state_dir)"
+  rm -f "$dir/$(agent_token)" 2>/dev/null
+  rmdir "$dir" 2>/dev/null
+}
+
+forget_agents() { rm -rf -- "$(agent_state_dir)" 2>/dev/null; }
+
+agents_running() {
+  local dir
+  dir="$(agent_state_dir)"
+  [[ -d "$dir" ]] || return 1
+  # A crashed agent never sends SubagentStop, so ignore stale entries rather
+  # than pinning the tab on "working" forever.
+  find "$dir" -type f -mmin +240 -delete 2>/dev/null
+  [[ -n "$(ls -A "$dir" 2>/dev/null)" ]]
+}
+
 question_at_end() {
   local message="$1" last_line
   # Only a CLOSING question means the agent is waiting on an answer. Scanning
@@ -48,12 +90,22 @@ resolve_state() {
   event="$(json_value '.hook_event_name')"
   case "$event" in
     SessionStart)
+      forget_agents
       # /clear and /new start a fresh conversation (source "clear"); drop the
       # tab title entirely instead of marking the stale one as ready.
       case "$(json_value '.source')" in
         clear|new) printf 'clear\n' ;;
         *) printf 'ready\n' ;;
       esac
+      ;;
+    SubagentStart)
+      mark_agent_running
+      printf 'working\n'
+      ;;
+    SubagentStop)
+      # The parent turn resumes once a subagent returns, so this is still work.
+      mark_agent_done
+      printf 'working\n'
       ;;
     UserPromptSubmit)
       printf 'working\n'
@@ -91,6 +143,12 @@ resolve_state() {
       esac
       ;;
     Stop)
+      # Subagents outlive the turn that spawned them: keep the working marker
+      # rather than claiming the tab is idle.
+      if agents_running; then
+        printf 'working\n'
+        return 0
+      fi
       message="$(json_value '.last_assistant_message')"
       if question_at_end "$message"; then
         printf 'input\n'
@@ -99,6 +157,7 @@ resolve_state() {
       fi
       ;;
     SessionEnd)
+      forget_agents
       printf 'ready\n'
       ;;
     *)
