@@ -57,4 +57,7 @@ table.insert(ctx.autostart, { cmd = "wl-paste --type image --watch cliphist stor
 -- xdg-desktop-portal-hyprland (should be auto starting. However, you can force to start)
 -- exec-once = $scriptsDir/PortalHyprland.sh
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/KeybindsLayoutInit.sh" })
+-- Workaround: reload config when a monitor is hotplugged so cursor bounds
+-- include the new output (Hyprland 0.55 Lua-build bug)
+table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/MonitorHotplugFix.sh" })
 return true
