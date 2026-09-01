@@ -22,6 +22,7 @@ set -uo pipefail
 readonly LOG_TAG="FixCursorMonitors"
 readonly SETTLE_TRIES=30 # 30 * 0.5s = 15s ceiling waiting for outputs
 readonly DEBOUNCE=2      # seconds of quiet before acting on a hotplug burst
+readonly MODE_POLL=15    # seconds between mode-drift checks
 
 log() { printf '%s %s: %s\n' "$(date '+%H:%M:%S')" "$LOG_TAG" "$*" >&2; }
 
@@ -142,6 +143,87 @@ unstick() {
   log "unstuck (was $before, layout ${ex}x${ey}, now $(cursor_pos))"
 }
 
+# --- mode drift watchdog -----------------------------------------------------
+# This HDMI link renegotiates behind Hyprland's back: the panel drops to a
+# lower mode while Hyprland still believes (and renders) the configured one, so
+# the desktop appears zoomed with only its top-left corner visible. Nothing in
+# hyprctl or the Hyprland log reveals it -- the only ground truth is the DRM
+# CRTC's current mode, hence drm_info.
+
+card_path() {
+  local c
+  for c in /dev/dri/card0 /dev/dri/card1; do
+    [[ -e "$c" ]] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+
+# Mode the CRTC is really scanning out for a connector, as "WxH@R".
+actual_mode() {
+  local name="$1" card cid
+  card="$(card_path)" || return 1
+  cid="$(cat "/sys/class/drm/$(basename "$card")-$name/connector_id" 2>/dev/null)"
+  [[ "$cid" =~ ^[0-9]+$ ]] || return 1
+  drm_info -j "$card" 2>/dev/null | jq -r --arg card "$card" --argjson cid "$cid" '
+    .[$card] as $d
+    | ($d.connectors[]? | select(.id == $cid) | .properties.CRTC_ID.value) as $crtc
+    | ($d.crtcs[]? | select(.id == $crtc) | .properties.MODE_ID.data)
+    | select(. != null)
+    | "\(.hdisplay)x\(.vdisplay)@\(.vrefresh)"' 2>/dev/null
+}
+
+# Mode Hyprland believes it is driving, same format.
+believed_mode() {
+  hyprctl monitors -j 2>/dev/null | jq -r --arg n "$1" '
+    .[] | select(.name == $n) | "\(.width)x\(.height)@\(.refreshRate | round)"' 2>/dev/null
+}
+
+# Re-issue the mode: a plain re-apply is ignored, so step through a different
+# mode first to force a real modeset.
+resync_mode() {
+  local name="$1" want="$2" scale="$3" pos="$4" wh rate
+  wh="${want%@*}"
+  rate="${want#*@}"
+  hyprctl eval "hl.monitor({ output = \"$name\", mode = \"1920x1080@60\", position = \"$pos\", scale = \"1.0\" })" >/dev/null 2>&1
+  sleep 0.5
+  hyprctl eval "hl.monitor({ output = \"$name\", mode = \"${wh}@${rate}\", position = \"$pos\", scale = \"$scale\" })" >/dev/null 2>&1
+  sleep 0.5
+}
+
+check_mode_drift() {
+  have_mode_tools || return 0
+  local name believed actual scale pos
+  while read -r name scale pos; do
+    [[ -n "$name" ]] || continue
+    believed="$(believed_mode "$name")"
+    actual="$(actual_mode "$name")"
+    [[ -n "$believed" && -n "$actual" ]] || continue
+    if [[ "$believed" != "$actual" ]]; then
+      # The CRTC keeps reporting the previous mode for a moment after a
+      # modeset, so a single disagreeing sample is usually just that lag.
+      # Confirm it persists before touching anything.
+      sleep 3
+      actual="$(actual_mode "$name")"
+      [[ -n "$actual" && "$believed" != "$actual" ]] || continue
+      log "mode drift on $name: hyprland=$believed panel=$actual -- resyncing"
+      resync_mode "$name" "$believed" "$scale" "$pos"
+      local now
+      now="$(actual_mode "$name")"
+      if [[ "$now" == "$believed" ]]; then
+        log "resynced $name to $now"
+      else
+        log "resync of $name did not take (panel=$now); the link may not support this mode"
+      fi
+      return 0
+    fi
+  done < <(hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name) \(.scale) \(.x)x\(.y)"' 2>/dev/null)
+}
+
+have_mode_tools() {
+  command -v drm_info >/dev/null 2>&1 || return 1
+  return 0
+}
+
 watch_mode() {
   local socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/.socket2.sock"
   if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" || ! -S "$socket" ]]; then
@@ -157,7 +239,7 @@ watch_mode() {
   wait_for_settle
   unstick
 
-  local pending=0 line
+  local pending=0 idle=0 line
   while true; do
     if read -r -t 1 line; then
       case "$line" in
@@ -167,7 +249,17 @@ watch_mode() {
       # idle tick: count down the debounce, then act once the burst is over
       if ((pending > 0)); then
         ((pending--))
-        ((pending == 0)) && { wait_for_settle; unstick; }
+        if ((pending == 0)); then
+          wait_for_settle
+          unstick
+          idle=0 # skip the next drift poll: we just modeset everything
+        fi
+      else
+        ((idle++))
+        if ((idle >= MODE_POLL)); then
+          idle=0
+          check_mode_drift
+        fi
       fi
     fi
   done < <(socat -u UNIX-CONNECT:"$socket" -)
