@@ -20,4 +20,6 @@ end
 table.insert(ctx.autostart, { cmd = "systemctl --user start kdeconnectd.service" })
 -- ydotool daemon: lets the keyboard scroller emit mouse-wheel scroll (see configs/Keybinds.lua)
 table.insert(ctx.autostart, { cmd = "bash -lc 'pgrep -x ydotoold >/dev/null || ydotoold'" })
+-- Frees the pointer when Hyprland clamps it to one monitor (needs ydotoold above)
+table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/FixCursorMonitors.sh --watch" })
 return true
