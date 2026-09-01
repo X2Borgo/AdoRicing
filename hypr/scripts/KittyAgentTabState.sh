@@ -15,9 +15,26 @@ json_value() {
 }
 
 question_at_end() {
-  local message="$1" last_block
-  last_block="$(awk -v RS='' 'NF { block=$0 } END { print block }' <<< "$message")"
-  [[ "$last_block" == *"?"* ]]
+  local message="$1" last_line
+  # Only a CLOSING question means the agent is waiting on an answer. Scanning
+  # the whole trailing paragraph for "?" flagged tabs for any incidental
+  # question mark ("did that work? Anyway, all done.", a "?" glob in prose),
+  # so test the last non-empty line instead.
+  last_line="$(awk 'NF { line = $0 } END { print line }' <<< "$message")"
+  last_line="${last_line%"${last_line##*[![:space:]]}"}"
+  # Peel trailing markdown wrappers so "**Shall I continue?**" still counts.
+  # Quoted case patterns, not a regex bracket class: an escaped "]" closes the
+  # class early and the whole test silently stops matching.
+  while [[ -n "$last_line" ]]; do
+    case "$last_line" in
+      *'*' | *'_' | *'`' | *'"' | *"'" | *')' | *']' | *'>')
+        last_line="${last_line%?}"
+        last_line="${last_line%"${last_line##*[![:space:]]}"}"
+        ;;
+      *) break ;;
+    esac
+  done
+  [[ "$last_line" == *"?" ]]
 }
 
 resolve_state() {
