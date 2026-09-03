@@ -198,32 +198,6 @@ source <(ng completion script)
 eval "$(uv generate-shell-completion zsh)"
 eval "$(uvx --generate-shell-completion zsh)"
 
-# --- 4b. KEEP-AWAKE WHITELIST ---
-# Closing the lid makes logind suspend the whole machine, which freezes every
-# process. A single process cannot be exempted from a suspend, so instead these
-# commands are auto-wrapped in a systemd inhibitor: while one of them is
-# running, lid close / sleep / idle are ignored, and normal behaviour returns
-# as soon as it exits.
-#
-# Add or remove entries here. Use `noawake <cmd>` to run one without the
-# inhibitor, or `awake <cmd>` to wrap anything not on the list.
-ADO_KEEPAWAKE_CMDS=(claude)
-
-_ado_keepawake_script="$HOME/.config/hypr/scripts/KeepAwake.sh"
-if [ -x "$_ado_keepawake_script" ]; then
-  awake() { "$_ado_keepawake_script" --why "keep-awake: $1" "$@"; }
-  noawake() { command "$@"; }
-
-  for _ado_ka_cmd in $ADO_KEEPAWAKE_CMDS; do
-    if command -v "$_ado_ka_cmd" >/dev/null 2>&1; then
-      # systemd-inhibit execs the real binary via PATH, so this does not recurse
-      # back into the wrapper function.
-      eval "${_ado_ka_cmd}() { \"\$_ado_keepawake_script\" --why \"keep-awake: ${_ado_ka_cmd}\" ${_ado_ka_cmd} \"\$@\"; }"
-    fi
-  done
-  unset _ado_ka_cmd
-fi
-
 # --- 5. LOCAL OVERRIDES ---
 # Machine-specific settings live outside the repo; this file is created by
 # install.sh and never committed.
