@@ -56,6 +56,16 @@ agents_running() {
   [[ -n "$(ls -A "$dir" 2>/dev/null)" ]]
 }
 
+# Remember which session transcript belongs to this tab, so KittyAgentTabSync.sh
+# can tell "finished" from "asked you something" when no Stop hook ever fires.
+remember_transcript() {
+  local transcript dir
+  transcript="$(json_value '.transcript_path')"
+  [[ -n "$transcript" && "${KITTY_WINDOW_ID:-}" =~ ^[0-9]+$ ]] || return 0
+  dir="${XDG_RUNTIME_DIR:-/tmp}/ado-kitty-win"
+  mkdir -p "$dir" 2>/dev/null && printf '%s\n' "$transcript" >"$dir/$KITTY_WINDOW_ID" 2>/dev/null
+}
+
 question_at_end() {
   local message="$1" last_line
   # Only a CLOSING question means the agent is waiting on an answer. Scanning
@@ -187,6 +197,8 @@ emit_hook_result() {
   # Empty JSON is valid for both Codex and Claude lifecycle command hooks.
   printf '{}\n'
 }
+
+remember_transcript
 
 state="$(resolve_state)" || {
   emit_hook_result

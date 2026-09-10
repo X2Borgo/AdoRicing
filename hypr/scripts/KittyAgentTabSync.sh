@@ -31,6 +31,31 @@ readonly READY="◇ "
 
 log() { printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >&2; }
 
+# shellcheck source=lib/agent-question.sh
+_lib="${BASH_SOURCE[0]%/*}/lib/agent-question.sh"
+if [[ -r "$_lib" ]]; then
+  . "$_lib"
+else
+  log "missing $_lib; cannot tell a finished turn from a pending question"
+  exit 1
+fi
+
+# An idle session that ended by asking something is waiting on an answer, not
+# done. Claude Code's window title says "✳" either way, so recover the
+# distinction from the transcript the hook recorded for this tab.
+idle_marker_for() {
+  local wid="$1" transcript text
+  transcript="$(cat "${XDG_RUNTIME_DIR:-/tmp}/ado-kitty-win/$wid" 2>/dev/null)"
+  if [[ -n "$transcript" ]]; then
+    text="$(agent_last_assistant_text "$transcript")"
+    if [[ -n "$text" ]] && agent_question_at_end "$text"; then
+      printf '%s' "$INPUT"
+      return 0
+    fi
+  fi
+  printf '%s' "$READY"
+}
+
 sockets() {
   local s found=1
   for s in "${XDG_RUNTIME_DIR:-/tmp}"/ado-kitty-*; do
@@ -71,7 +96,7 @@ reconcile_socket() {
         idle_streak["$wid"]=$(( ${idle_streak["$wid"]:-0} + 1 ))
         # "needs input" is a legitimate idle state; only rescue "working"
         if [[ "$marker" == "$WORKING" ]] && (( ${idle_streak["$wid"]} >= IDLE_CONFIRM )); then
-          want="$READY"
+          want="$(idle_marker_for "$wid")"
         else
           continue
         fi
