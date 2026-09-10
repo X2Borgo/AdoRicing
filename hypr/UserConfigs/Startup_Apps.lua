@@ -22,4 +22,6 @@ table.insert(ctx.autostart, { cmd = "systemctl --user start kdeconnectd.service"
 table.insert(ctx.autostart, { cmd = "bash -lc 'pgrep -x ydotoold >/dev/null || ydotoold'" })
 -- Frees the pointer when Hyprland clamps it to one monitor (needs ydotoold above)
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/FixCursorMonitors.sh --watch" })
+-- Corrects agent tab markers the lifecycle hooks fail to update
+table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/KittyAgentTabSync.sh --watch" })
 return true
