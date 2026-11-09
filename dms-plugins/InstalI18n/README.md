@@ -1,7 +1,8 @@
 # Instal i18n Health — DMS bar widget
 
-DankMaterialShell bar widget showing Django translation health across every
-checkout/worktree in `~/Desktop/Instal` that has gettext catalogs.
+DankMaterialShell bar widget showing translation health across every
+checkout/worktree in `~/Projects/Instal` that carries a catalog — gettext `.po`
+for the Django services, and the Transloco TS catalogs for amaki's front end.
 
 ## What it shows
 
@@ -27,20 +28,42 @@ checkout/worktree in `~/Desktop/Instal` that has gettext catalogs.
 
 ## How it works
 
-`scripts/collect_i18n.py` runs `msgfmt --statistics` and
-`msgattrib --untranslated | --only-fuzzy | --only-obsolete` on every
-`locale/*/LC_MESSAGES/*.po` and emits JSON to `~/.cache/instal-i18n/data.json`;
+`scripts/collect_i18n.py` walks the workspace and emits JSON to
+`~/.cache/instal-i18n/data.json`. It reads two kinds of catalog and reports them
+side by side under the same worktree:
+
+- **gettext** — `msgfmt --statistics` and
+  `msgattrib --untranslated | --only-fuzzy | --only-obsolete` on every
+  `locale/*/LC_MESSAGES/*.po`.
+- **Transloco** (`scripts/collect_transloco.py`) — amaki's front end left
+  `djangojs.po` behind, along with the `po-to-catalogs.mjs` generator; its copy
+  now lives in the hand-maintained `core/i18n/catalogs/<lang>.ts` modules, keyed
+  by the English source string. Nothing regenerates or verifies them, so the
+  collector does: it parses all five, takes `en` as the key set of record, and
+  reports per language the keys missing from it (*untranslated*), the ones still
+  identical to their English source (*fuzzy* — for `en` itself, the entries whose
+  value differs from their key, legitimately only the Italian-source msgids), and
+  the keys nothing in `src/` or `projects/` mentions any more (*obsolete*). One
+  extra row, `en/source`, goes the other way: every literal the app translates
+  (`| transloco`, `translate(…)`, `t(…)`) that no catalog has a key for. That row
+  is the one that grows on its own, since adding a string no longer fails
+  anything.
+
+  Scoped catalogs (`landing/`, `product/`, `shared-chat/`, …) are deliberately
+  skipped: they are typed TS objects, so a missing string there is a compile
+  error rather than a silent gap.
+
 `build_dashboard.py` injects it into `dashboard_template.html`;
 `summarize.py` prints the compact JSON the widget consumes.
 Requires `gettext` (msgfmt/msgattrib), `python3`, `git`.
 
-Workspace root defaults to `~/Desktop/Instal`; override with
+Workspace root defaults to `~/Projects/Instal`; override with
 `INSTAL_WORKSPACE`.
 
 ## Install
 
 ```sh
-ln -s ~/Desktop/AdoRicing/dms-plugins/InstalI18n ~/.config/DankMaterialShell/plugins/instalI18n
+ln -s ~/Projects/ricing/AdoRicing/dms-plugins/InstalI18n ~/.config/DankMaterialShell/plugins/instalI18n
 dms ipc plugins reload
 dms ipc plugins enable instalI18n
 ```

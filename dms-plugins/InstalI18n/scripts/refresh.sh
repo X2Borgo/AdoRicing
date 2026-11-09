@@ -5,7 +5,7 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/instal-i18n"
-WORKSPACE="${INSTAL_WORKSPACE:-$HOME/Desktop/Instal}"
+WORKSPACE="${INSTAL_WORKSPACE:-$HOME/Projects/Instal}"
 
 mkdir -p "$CACHE"
 python3 "$DIR/collect_i18n.py" "$WORKSPACE" > "$CACHE/data.json.tmp"

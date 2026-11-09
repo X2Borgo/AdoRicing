@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""Collect Django translation health stats into JSON.
+"""Collect translation health stats into JSON.
 
 Usage:
-  collect_i18n.py <workspace_root>   # scan every checkout/worktree with .po catalogs
-Runs msgfmt --statistics and msgattrib per .po file.
+  collect_i18n.py <workspace_root>   # scan every checkout/worktree with catalogs
+
+Two kinds of catalog, reported side by side per worktree:
+
+- gettext `.po` under `locale/*/LC_MESSAGES/`, read with msgfmt/msgattrib. Still
+  how every Django service in the workspace carries its copy.
+- Transloco TS catalogs under an Angular app's `core/i18n/catalogs/`. amaki's
+  front end moved there and dropped its `djangojs.po` along with the generator
+  that used to write the catalogs from them, so the .po scan alone now sees
+  nothing of what the amaki UI actually renders. See collect_transloco.py.
 """
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+import collect_transloco
 
 
 def msgfmt_stats(po: Path) -> dict:
@@ -72,6 +82,7 @@ def collect_locale_dir(locale_dir: Path) -> tuple[list[dict], str]:
         files.append({
             "lang": lang,
             "domain": po.stem,
+            "source": f"{lang}/{po.stem}.po",
             **stats,
             "untranslated_entries": msgattrib_entries(po, "--untranslated", "--no-obsolete"),
             "fuzzy_entries": msgattrib_entries(po, "--only-fuzzy", "--no-obsolete"),
@@ -84,36 +95,56 @@ def collect_locale_dir(locale_dir: Path) -> tuple[list[dict], str]:
     return files, pot_date
 
 
+SKIP = {"node_modules", ".venv", "dist", ".angular"}
+
+
+def clean(parts) -> bool:
+    return not (SKIP & set(parts))
+
+
 def main() -> None:
     workspace = Path(sys.argv[1])
-    # A checkout owns all LC_MESSAGES dirs under it; group locale dirs by
-    # the git toplevel that contains them.
+    # A checkout owns every catalog under it, .po or Transloco; group them by
+    # the git toplevel that contains them so one worktree is one entry.
     locale_dirs = sorted(
         {p.parent.parent for p in workspace.glob("*/**/LC_MESSAGES")
-         if p.is_dir()
-         and "node_modules" not in p.parts and ".venv" not in p.parts}
-    )
+         if p.is_dir() and clean(p.parts)})
+    catalog_dirs = sorted(
+        {p for p in workspace.glob("*/**/core/i18n/catalogs")
+         if p.is_dir() and clean(p.parts)})
+
+    found: dict[Path, dict] = {}
+    for kind, dirs in (("po", locale_dirs), ("transloco", catalog_dirs)):
+        for directory in dirs:
+            toplevel = git(directory, "rev-parse", "--show-toplevel")
+            # Broken worktrees (pruned metadata) make git fail: fall back to the
+            # checkout dir, i.e. the first path component under the workspace.
+            root = Path(toplevel) if toplevel else (
+                workspace / directory.relative_to(workspace).parts[0])
+            if kind == "po":
+                files, pot_date = collect_locale_dir(directory)
+            else:
+                files, pot_date = collect_transloco.collect(directory), ""
+            if not files:
+                continue
+            entry = found.setdefault(root, {"files": [], "dirs": [], "pot_date": ""})
+            entry["files"] += files
+            entry["dirs"].append(str(directory.relative_to(root)))
+            entry["pot_date"] = entry["pot_date"] or pot_date
+
     worktrees = []
-    for locale_dir in locale_dirs:
-        toplevel = git(locale_dir, "rev-parse", "--show-toplevel")
-        # Broken worktrees (pruned metadata) make git fail: fall back to the
-        # checkout dir, i.e. the first path component under the workspace.
-        root = Path(toplevel) if toplevel else (
-            workspace / locale_dir.relative_to(workspace).parts[0])
+    for root, entry in sorted(found.items()):
         repo = git(root, "remote", "get-url", "origin").rstrip("/")
         repo = repo.rsplit("/", 1)[-1].removesuffix(".git") if repo else "?"
         branch = git(root, "branch", "--show-current") or git(
             root, "rev-parse", "--short", "HEAD") or "broken worktree"
-        files, pot_date = collect_locale_dir(locale_dir)
-        if not files:
-            continue
         worktrees.append({
             "name": str(root.relative_to(workspace)) if root.is_relative_to(workspace) else root.name,
             "repo": repo,
             "branch": branch,
-            "locale_dir": str(locale_dir.relative_to(root)),
-            "pot_date": pot_date,
-            "files": files,
+            "locale_dir": ", ".join(entry["dirs"]),
+            "pot_date": entry["pot_date"],
+            "files": entry["files"],
         })
     print(json.dumps({"workspace": str(workspace), "worktrees": worktrees},
                      ensure_ascii=False, indent=1))
