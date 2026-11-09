@@ -88,3 +88,5 @@ hl.bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }), {
 hl.env("XDG_SESSION_TYPE", "wayland")
 
 require("dms.cursor")
+
+hl.bind("CTRL + ALT + X", hl.dsp.global("com.t3tools.T3Code:capture-window"))

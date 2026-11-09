@@ -27,8 +27,8 @@ if ! require_command jq; then
   exit 0
 fi
 
-WORK_PROJECT_DIR="${WORK_PROJECT_DIR:-$HOME/Desktop/DoraFeature}"
-DREVIA_PROJECT_DIR="${DREVIA_PROJECT_DIR:-$HOME/Desktop/DreviaEsports}"
+WORK_PROJECT_DIR="${WORK_PROJECT_DIR:-$HOME/Projects/Instal/price-ninja-top-10}"
+DREVIA_PROJECT_DIR="${DREVIA_PROJECT_DIR:-$HOME/Projects/Drevia/DreviaEsports}"
 
 if [[ ! -d "$WORK_PROJECT_DIR" ]]; then
   WORK_PROJECT_DIR="$HOME"

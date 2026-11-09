@@ -50,10 +50,15 @@ agents_running() {
   local dir
   dir="$(agent_state_dir)"
   [[ -d "$dir" ]] || return 1
-  # A crashed agent never sends SubagentStop, so ignore stale entries rather
-  # than pinning the tab on "working" forever.
-  find "$dir" -type f -mmin +240 -delete 2>/dev/null
-  [[ -n "$(ls -A "$dir" 2>/dev/null)" ]]
+  # A crashed or interrupted agent never sends SubagentStop. Expire stale
+  # entries quickly: guessing "ready" too early is self-correcting (the next
+  # tool event re-marks the tab), while guessing "working" leaves the tab
+  # pinned on the play marker with nothing left to clear it.
+  find "$dir" -type f -mmin +30 -delete 2>/dev/null
+  if [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
+    rmdir "$dir" 2>/dev/null
+    return 1
+  fi
 }
 
 # Remember which session transcript belongs to this tab, so KittyAgentTabSync.sh
@@ -145,9 +150,12 @@ resolve_state() {
           printf 'ready\n'
           ;;
         idle_prompt)
-          # Timer-driven nag, not a state change: leave the title alone so an
-          # idle session keeps whatever it was last labelled.
-          return 1
+          # Timer-driven nag, but it only fires while the session waits on the
+          # user, which is proof the agent is not working. Some turn endings
+          # emit no Stop at all (a user interrupt, a straggling PostToolUse
+          # after one), so use this to clear a stuck working marker. "heal"
+          # downgrades the working marker only and leaves "needs input" alone.
+          printf 'heal\n'
           ;;
         *) return 1 ;;
       esac
@@ -221,7 +229,9 @@ if [[ "$state" == "clear" ]]; then
   exit 0
 fi
 
-kitty_state="$(kitten @ --to "$kitty_address" ls 2>/dev/null)" || kitty_state=""
+# --match keeps the reply to this one window: the full listing is tens of
+# kilobytes once a dozen agent tabs are open, and this runs on every hook.
+kitty_state="$(kitten @ --to "$kitty_address" ls --match "id:$window_id" 2>/dev/null)" || kitty_state=""
 current_title="$(
   jq -r --argjson window_id "$window_id" '
     first(
@@ -231,6 +241,19 @@ current_title="$(
     ) // empty
   ' <<< "$kitty_state" 2>/dev/null
 )"
+
+if [[ "$state" == "heal" ]]; then
+  # Rescue a stuck working marker and nothing else: "needs input" is a real
+  # state for an idle session, and a foreign agent's marker is not ours to
+  # rewrite.
+  case "$agent:$current_title" in
+    claude:"◆ "* | codex:"▶ "* | preserve:"◆ "* | preserve:"▶ "*) state="ready" ;;
+    *)
+      emit_hook_result
+      exit 0
+      ;;
+  esac
+fi
 
 if [[ "$agent" == "preserve" ]]; then
   case "$current_title" in
