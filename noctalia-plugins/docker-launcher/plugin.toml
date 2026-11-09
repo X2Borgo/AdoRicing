@@ -1,0 +1,20 @@
+# Port of dms-plugins/DockerLauncher: launcher entries that open the rofi
+# DockerMenu.sh views. Type `/docker` in the launcher, or search globally.
+
+id = "alborghi/docker-launcher"
+name = "Docker Launcher"
+version = "1.0.0"
+plugin_api = 24
+author = "alborghi"
+license = "MIT"
+dependencies = ["docker"]
+tags = ["launcher", "development"]
+icon = "brand-docker"
+description = "Docker menu, containers, images and compose projects from the launcher."
+
+[[launcher_provider]]
+id = "docker"
+entry = "docker.luau"
+prefix = "docker"
+glyph = "brand-docker"
+include_in_global_search = true

@@ -1,0 +1,17 @@
+# Battery percentage + charge state as a desktop widget, so it can be placed on
+# the lock screen (Noctalia's built-in battery widget is bar-only).
+# Reads /sys/class/power_supply/BAT*/ directly; no dependencies.
+
+id = "alborghi/battery"
+name = "Battery"
+version = "1.0.0"
+plugin_api = 24
+author = "alborghi"
+license = "MIT"
+icon = "battery-3"
+description = "Battery glyph and percentage for the desktop and lock screen."
+tags = ["desktop", "system"]
+
+[[desktop_widget]]
+id = "battery"
+entry = "desktop.luau"

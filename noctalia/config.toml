@@ -1,0 +1,327 @@
+# AdoRicing — Noctalia v5 config. Linked to ~/.config/noctalia by `install.sh --noctalia`.
+# GUI changes go to ~/.local/state/noctalia/settings.toml and win over these files;
+# fold the good ones back in here. Every *.toml in this directory is merged alphabetically.
+
+[shell]
+font_family         = "JetBrainsMono Nerd Font"
+corner_radius_scale = 1.0
+time_format         = "{:%H:%M}"
+polkit_agent        = false      # hypr/scripts/Polkit.sh already runs one
+clipboard_enabled   = true
+clipboard_history_max_entries = 200
+
+[theme]
+mode           = "dark"
+source         = "custom"
+custom_palette = "Ado"           # palettes/Ado.json
+
+[theme.templates]
+# The built-in kitty/hyprland templates append include lines to their target configs,
+# which are symlinks into this repo. The Ado palette is static, so they stay off.
+enable_builtin_templates   = false
+enable_community_templates = false
+
+[location]
+auto_locate = true               # feeds weather and the night-light schedule
+
+[weather]
+enabled = true
+unit    = "celsius"
+
+[nightlight]
+enabled           = true         # replaces Hyprsunset.sh
+temperature_night = 4000
+
+[wallpaper]
+enabled   = true
+directory = "~/Projects/ricing/AdoRicing/Instal-wallpapers/ado"
+
+[wallpaper.default]
+path = "~/Projects/ricing/AdoRicing/Instal-wallpapers/ado/merry_wallpaper.png"
+
+[shell.window_switcher]
+style = "carousel"
+mru   = true
+
+# ── Bar (mirrors the DMS "Main Bar") ─────────────────────────────────────────
+
+[bar]
+order = ["main"]
+
+[bar.main]
+position           = "top"
+thickness          = 34
+radius             = 12
+margin_ends        = 0
+margin_edge        = 0
+padding            = 8
+widget_spacing     = 4
+background_opacity = 0.92
+start  = ["launcher", "workspaces", "active_window"]
+center = ["media", "clock", "weather", "inbox"]
+end    = ["claudecode", "github-prs", "tray", "phone", "tailscale", "clipboard", "cpu", "ram", "i18n", "notifications", "caffeine", "battery", "control-center", "session"]
+
+[widget.workspaces]
+show_labels  = true
+label_source = "id"
+
+[widget.cpu]
+type = "sysmon"
+stat = "cpu_usage"
+
+[widget.ram]
+type = "sysmon"
+stat = "ram_used"
+
+[widget.claudecode]
+type = "jrohland/claudecode:pill"
+
+[widget.github-prs]
+type = "raycursive/github-prs:bar"
+
+[widget.phone]
+type = "icefish/phone-connect:bar"
+
+[widget.tailscale]
+type = "davemhammer/tailscale:status"
+
+[widget.i18n]
+type = "alborghi/instal-i18n:bar"
+
+[widget.inbox]
+type = "alborghi/app-inbox:bar"
+
+[widget.media]
+hide_when_no_media = true
+
+# ── Control center (DMS tiles) ───────────────────────────────────────────────
+
+[[control_center.shortcuts]]
+type = "wifi"
+[[control_center.shortcuts]]
+type = "bluetooth"
+[[control_center.shortcuts]]
+type = "audio"
+[[control_center.shortcuts]]
+type = "mic_mute"
+[[control_center.shortcuts]]
+type = "nightlight"
+[[control_center.shortcuts]]
+type = "dark_mode"
+[[control_center.shortcuts]]
+type = "caffeine"
+[[control_center.shortcuts]]
+type = "power_profile"
+[[control_center.shortcuts]]
+type = "notification"
+[[control_center.shortcuts]]
+type = "clipboard"
+
+# ── Lock + idle (replaces hypridle) ──────────────────────────────────────────
+
+# Lock screen: Ado wallpaper, clock, looping GIF sticker (noctalia/assets/lock/).
+# Fine-tune positions with the lockscreen widgets editor, then fold them back here.
+[lockscreen]
+enabled             = true
+lock_before_suspend = true
+wallpaper           = "~/Projects/ricing/AdoRicing/Instal-wallpapers/ado/merry_wallpaper.png"
+blurred_desktop     = false
+tint_intensity      = 0.35
+transition          = ["honeycomb", "disc"]
+transition_duration = 450
+
+[lockscreen_widgets]
+enabled        = true
+schema_version = 2
+widget_order   = ["clock@HDMI-A-1", "clock-jp@HDMI-A-1", "ado@HDMI-A-1", "lockscreen-login-box@HDMI-A-1",
+                  "clock@eDP-1", "clock-jp@eDP-1", "ado@eDP-1", "lockscreen-login-box@eDP-1"]
+
+[lockscreen_widgets.widget."clock@HDMI-A-1"]
+type = "clock"
+output = "HDMI-A-1"
+cx = 420.0
+cy = 170.0
+box_width = 760.0
+box_height = 240.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { clock_style = "digital", font_family = "Mochiy Pop One", color = "#ffffff", background_opacity = 0.0 }
+
+[lockscreen_widgets.widget."clock-jp@HDMI-A-1"]
+type = "clock"
+output = "HDMI-A-1"
+cx = 440.0
+cy = 300.0
+box_width = 720.0
+box_height = 110.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { clock_style = "digital", font_family = "Mochiy Pop One Kanji", color = "#ffffff", background_opacity = 0.0, format = "{:%H}時{:%M}分" }
+
+[lockscreen_widgets.widget."ado@HDMI-A-1"]
+type = "sticker"
+output = "HDMI-A-1"
+cx = 1680.0
+cy = 820.0
+box_width = 320.0
+box_height = 320.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { image_path = "~/Projects/ricing/AdoRicing/noctalia/assets/lock/ado-ussewa.gif" }
+
+[lockscreen_widgets.widget."lockscreen-login-box@HDMI-A-1"]
+type = "login_box"
+output = "HDMI-A-1"
+cx = 960.0
+cy = 898.0
+box_width = 720.0
+box_height = 196.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+
+[lockscreen_widgets.widget."lockscreen-login-box@HDMI-A-1".settings]
+background_color     = "surface"
+background_opacity   = 0.72
+background_radius    = 16.0
+input_radius         = 10.0
+input_opacity        = 1.0
+layout               = "regular"
+center_password_text = true
+show_caps_lock       = true
+show_keyboard_layout = true
+show_login_button    = true
+show_media           = true
+show_session_buttons = true
+show_unlock_hint     = false
+show_weather         = true
+
+[lockscreen_widgets.widget."clock@eDP-1"]
+type = "clock"
+output = "eDP-1"
+cx = 420.0
+cy = 170.0
+box_width = 760.0
+box_height = 240.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { clock_style = "digital", font_family = "Mochiy Pop One", color = "#ffffff", background_opacity = 0.0 }
+
+[lockscreen_widgets.widget."clock-jp@eDP-1"]
+type = "clock"
+output = "eDP-1"
+cx = 400.0
+cy = 300.0
+box_width = 720.0
+box_height = 110.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { clock_style = "digital", font_family = "Mochiy Pop One Kanji", color = "#ffffff", background_opacity = 0.0, format = "{:%H}時{:%M}分" }
+
+[lockscreen_widgets.widget."ado@eDP-1"]
+type = "sticker"
+output = "eDP-1"
+cx = 1680.0
+cy = 820.0
+box_width = 320.0
+box_height = 320.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+settings = { image_path = "~/Projects/ricing/AdoRicing/noctalia/assets/lock/ado-ussewa.gif" }
+
+[lockscreen_widgets.widget."lockscreen-login-box@eDP-1"]
+type = "login_box"
+output = "eDP-1"
+cx = 960.0
+cy = 898.0
+box_width = 720.0
+box_height = 196.0
+placement_width = 1920.0
+placement_height = 1080.0
+rotation = 0.0
+
+[lockscreen_widgets.widget."lockscreen-login-box@eDP-1".settings]
+background_color     = "surface"
+background_opacity   = 0.72
+background_radius    = 16.0
+input_radius         = 10.0
+input_opacity        = 1.0
+layout               = "regular"
+center_password_text = true
+show_caps_lock       = true
+show_keyboard_layout = true
+show_login_button    = true
+show_media           = true
+show_session_buttons = true
+show_unlock_hint     = false
+show_weather         = true
+
+[idle]
+behavior_order          = ["lock", "screen-off"]
+pre_action_fade_seconds = 2.0
+
+[idle.behavior.lock]
+timeout = 600
+action  = "lock"
+enabled = true
+
+[idle.behavior.screen-off]
+timeout = 660
+action  = "screen_off"
+enabled = true
+
+# ── Dock ─────────────────────────────────────────────────────────────────────
+
+[dock]
+enabled       = true
+position      = "bottom"
+auto_hide     = true
+reserve_space = false
+magnification = true
+pinned        = ["kitty", "zen", "dev.zed.Zed", "com.t3tools.T3Code"]
+
+# ── Plugins ──────────────────────────────────────────────────────────────────
+# Community plugins replacing DMS ones (dankKDEConnect, tailscale, dockerManager)
+# plus extras. k8s-status adds /kube to the launcher, tailscale adds /ts.
+
+[plugins]
+auto_update = "all"
+enabled = [
+  "jrohland/claudecode",
+  "raycursive/github-prs",
+  "davemhammer/k8s-status",
+  "davemhammer/tailscale",
+  "8bury/mini-docker",
+  "icefish/phone-connect",
+  "alborghi/docker-launcher",
+  "alborghi/instal-i18n",
+  "alborghi/app-inbox",
+  "alborghi/battery",
+]
+
+# Declaring any [[plugins.source]] replaces the default list, so the built-in
+# official and community sources are restated here.
+[[plugins.source]]
+name     = "official"
+kind     = "git"
+location = "https://github.com/noctalia-dev/official-plugins"
+enabled  = true
+
+[[plugins.source]]
+name     = "community"
+kind     = "git"
+location = "https://github.com/noctalia-dev/community-plugins"
+enabled  = true
+
+# Our own plugins, ported from dms-plugins/.
+[[plugins.source]]
+name     = "ado"
+kind     = "path"
+location = "~/Projects/ricing/AdoRicing/noctalia-plugins"
+enabled  = true

@@ -1,0 +1,65 @@
+# Instal i18n Health — Noctalia port of dms-plugins/InstalI18n.
+# Three entries: a headless service (runs the InstalI18n scripts in place and
+# publishes shared state), a bar widget (Amaki logo + untranslated/fuzzy count
+# on main checkouts, click toggles the panel), and an attached panel with the
+# Translations and Worktrees cards.
+#
+# plugin_api 24 = direct-argv runAsync (the highest feature used; closures are 9).
+
+id = "alborghi/instal-i18n"
+name = "Instal i18n Health"
+version = "1.0.0"
+plugin_api = 24
+author = "alborghi"
+license = "MIT"
+icon = "language"
+dependencies = ["python3", "git", "gh"]
+tags = ["bar", "development", "panel", "service"]
+description = "Django translation health (untranslated/fuzzy) across the Instal worktrees, plus a worktree overview, with refresh and dashboard shortcuts."
+
+[[setting]]
+key = "scripts_dir"
+type = "folder"
+label_key = "settings.scripts_dir.label"
+description_key = "settings.scripts_dir.description"
+default = "~/Projects/ricing/AdoRicing/dms-plugins/InstalI18n/scripts"
+
+[[setting]]
+key = "refresh_interval"
+type = "int"
+label_key = "settings.refresh_interval.label"
+description_key = "settings.refresh_interval.description"
+default = 30
+min = 1
+max = 1440
+
+[[service]]
+id = "service"
+entry = "service.luau"
+
+[[widget]]
+id = "bar"
+entry = "bar.luau"
+
+  [[widget.setting]]
+  key = "untranslated_color"
+  type = "color"
+  label_key = "settings.untranslated_color.label"
+  default = "error"
+
+  [[widget.setting]]
+  key = "fuzzy_color"
+  type = "color"
+  label_key = "settings.fuzzy_color.label"
+  description_key = "settings.fuzzy_color.description"
+  default = "#E5C07B"
+
+# noctalia msg panel-toggle alborghi/instal-i18n:panel
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 400
+height = 620
+placement = "attached"
+position = "auto"
+open_near_click = true

@@ -1,0 +1,50 @@
+{
+  "title": "Instal tools",
+  "settings": {
+    "scripts_dir": {
+      "label": "Scripts directory",
+      "description": "The InstalI18n scripts folder (summary.sh, refresh.sh, worktrees.py, open.sh). Scripts run in place from here."
+    },
+    "refresh_interval": {
+      "label": "Refresh interval (minutes)",
+      "description": "How often cached translation and worktree data is re-read."
+    },
+    "untranslated_color": {
+      "label": "Color when strings are untranslated"
+    },
+    "fuzzy_color": {
+      "label": "Color when strings are only fuzzy",
+      "description": "The palette has no warning role, so this defaults to a fixed yellow."
+    }
+  },
+  "translations": {
+    "title": "Translations",
+    "refreshing": "re-scanning worktrees…",
+    "no_data": "no data yet — refresh",
+    "summary": "{untranslated} untranslated · {fuzzy} fuzzy on main",
+    "data_from": "data from {time}",
+    "refresh_tooltip": "Re-scan all worktrees",
+    "open_dashboard": "Open dashboard",
+    "refreshed": "i18n data refreshed",
+    "refresh_failed": "i18n refresh failed"
+  },
+  "worktrees": {
+    "title": "Worktrees",
+    "refreshing": "scanning worktrees + PR state…",
+    "summary": "{total} worktrees · {cleanable} cleanable · {dirty} dirty",
+    "refresh_tooltip": "Re-scan worktrees and PR state",
+    "scan_failed": "worktree scan failed",
+    "state": {
+      "broken": "broken",
+      "dirty": "dirty",
+      "unpushed": "{count} unpushed",
+      "no_upstream": "no upstream",
+      "merged_clean": "merged · cleanable",
+      "open_pr": "PR open",
+      "no_pr": "no PR"
+    }
+  },
+  "bar": {
+    "tooltip": "{untranslated} untranslated · {fuzzy} fuzzy on main"
+  }
+}
