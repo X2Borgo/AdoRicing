@@ -22,6 +22,11 @@ shell_running() {
 }
 
 restart_quickshell_if_active() {
+    # Noctalia hot-reloads its config and themes itself; never restart it here.
+    if pgrep -x noctalia >/dev/null 2>&1; then
+        return 0
+    fi
+
     if ! shell_running; then
         return 0
     fi

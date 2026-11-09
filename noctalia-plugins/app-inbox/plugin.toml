@@ -1,0 +1,116 @@
+# App Inbox - port of the AdoRicing DMS "App Inbox" bar pill + popout.
+# Three entries:
+#   service "fetch"  polls GitHub, Slack, Gmail, Linear, Calendar and
+#                    Deployments, normalizes everything into one item list and
+#                    publishes it through noctalia.state (see service.luau).
+#   widget  "bar"    inbox glyph + total count; click toggles the panel.
+#   panel   "panel"  provider tabs, search, filters, list + detail, open action.
+#
+# Open from anywhere: noctalia msg panel-toggle alborghi/app-inbox:panel
+
+id = "alborghi/app-inbox"
+name = "App Inbox"
+version = "1.0.0"
+plugin_api = 24
+author = "alborghi"
+license = "MIT"
+icon = "inbox"
+description = "GitHub PRs, Slack, Gmail, Linear, Google Calendar and Docker/Kubernetes status in one bar inbox."
+tags = ["bar", "panel", "service", "productivity"]
+dependencies = ["gh", "python3", "uv", "curl", "secret-tool", "docker", "kubectl", "xdg-open"]
+
+# ---- plugin-level settings (seeded into service, widget and panel) ----
+
+[[setting]]
+key = "scripts_dir"
+type = "folder"
+label_key = "settings.scripts_dir.label"
+description_key = "settings.scripts_dir.description"
+default = "~/Projects/ricing/AdoRicing/noctalia-plugins/app-inbox/scripts"
+
+[[setting]]
+key = "secrets_dir"
+type = "folder"
+label_key = "settings.secrets_dir.label"
+description_key = "settings.secrets_dir.description"
+default = "~/.config/DankMaterialShell/secrets"
+
+[[setting]]
+key = "python"
+type = "string"
+label_key = "settings.python.label"
+description_key = "settings.python.description"
+default = "/usr/bin/python3"
+advanced = true
+
+[[setting]]
+key = "enable_github"
+type = "bool"
+label_key = "settings.enable_github.label"
+default = true
+
+[[setting]]
+key = "enable_slack"
+type = "bool"
+label_key = "settings.enable_slack.label"
+default = true
+
+[[setting]]
+key = "enable_linear"
+type = "bool"
+label_key = "settings.enable_linear.label"
+default = true
+
+[[setting]]
+key = "enable_gmail"
+type = "bool"
+label_key = "settings.enable_gmail.label"
+default = true
+
+[[setting]]
+key = "enable_calendar"
+type = "bool"
+label_key = "settings.enable_calendar.label"
+default = true
+
+[[setting]]
+key = "enable_deployments"
+type = "bool"
+label_key = "settings.enable_deployments.label"
+default = true
+
+[[service]]
+id = "fetch"
+entry = "service.luau"
+
+[[widget]]
+id = "bar"
+entry = "bar.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  default = "inbox"
+
+  [[widget.setting]]
+  key = "show_breakdown"
+  type = "bool"
+  label_key = "settings.show_breakdown.label"
+  description_key = "settings.show_breakdown.description"
+  default = false
+
+  [[widget.setting]]
+  key = "hide_when_zero"
+  type = "bool"
+  label_key = "settings.hide_when_zero.label"
+  default = false
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 920
+height = 620
+placement = "attached"
+position = "auto"
+open_near_click = true

@@ -21,3 +21,6 @@ terminal/zsh/*.local.zsh
 
 # Editor/backup droppings
 hypr/*.backup*
+
+# Vendored DankMaterialShell clone (has its own .git); DMS now comes from apt
+shell/

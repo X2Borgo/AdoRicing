@@ -195,9 +195,9 @@
 
   <div class="legend" role="note">
     <span><i class="sw s-good"></i>translated</span>
-    <span><i class="sw s-warn"></i>fuzzy — auto-guessed, ignored at runtime until reviewed</span>
-    <span><i class="sw s-crit"></i>untranslated</span>
-    <span><i class="sw" style="background:var(--dead)"></i>obsolete — dead <span class="mono">#~</span> entries, not shown in the bar</span>
+    <span><i class="sw s-warn"></i>fuzzy — gettext: auto-guessed, ignored at runtime until reviewed; Transloco: copy still identical to the English source</span>
+    <span><i class="sw s-crit"></i>untranslated — on the <span class="mono">en/source</span> row, a string the code translates that no catalog has</span>
+    <span><i class="sw" style="background:var(--dead)"></i>obsolete — dead entries (gettext <span class="mono">#~</span>, or a Transloco key the code no longer mentions), not shown in the bar</span>
   </div>
 
   <div class="panel" id="files"></div>
@@ -206,10 +206,14 @@
   <div class="panel" id="search-results" hidden></div>
 
   <footer>
-    Data collected with <code>msgfmt --statistics</code> and <code>msgattrib --untranslated | --only-fuzzy | --only-obsolete</code>
-    per <code>.po</code> file, across every checkout/worktree in the Instal workspace with a Django locale dir.
-    Counts reflect the catalogs as of each worktree's extraction date — run
-    <code>make messages</code> there first to pick up strings added to code since then. To refresh this page, re-run
+Two kinds of catalog, per checkout/worktree in the Instal workspace.
+    <b>gettext</b>: <code>msgfmt --statistics</code> and <code>msgattrib --untranslated | --only-fuzzy | --only-obsolete</code>
+    per <code>.po</code> file — counts are only as fresh as that worktree's extraction date, so run
+    <code>make messages</code> there first to pick up strings added since.
+    <b>Transloco</b> (amaki's front end, which no longer has <code>djangojs.po</code>): the hand-maintained
+    <code>core/i18n/catalogs/&lt;lang&gt;.ts</code> modules, compared against <code>en</code> and against every
+    literal the app translates. Nothing regenerates these, so the <code>en/source</code> row — copy in the code with
+    no key in any catalog — is the one that grows on its own. To refresh this page, re-run
     <code>refresh.sh</code> and reload.
   </footer>
 </div>
@@ -311,7 +315,7 @@
         <button class="filerow" aria-expanded="false">
           <span class="fname">
             <span class="lang">${LANG[f.lang] || f.lang}</span>
-            <span class="domain mono">${f.lang}/${f.domain}.po</span>
+            <span class="domain mono">${f.source || `${f.lang}/${f.domain}.po`}</span>
           </span>
           <span class="bar" role="img" aria-label="${f.translated} translated, ${f.fuzzy} fuzzy, ${f.untranslated} untranslated of ${t}">
             ${seg(f.translated, "s-good", "translated")}${seg(f.fuzzy, "s-warn", "fuzzy")}${seg(f.untranslated, "s-crit", "untranslated")}
@@ -376,7 +380,7 @@
     resultsEl.innerHTML = hits.length
       ? hits.map(({ f, k, e }) => `
           <div class="entry" style="padding:9px 16px">
-            <div class="refs mono">${f.lang}/${f.domain}.po · ${KIND_LABEL[k]}</div>
+            <div class="refs mono">${f.source || `${f.lang}/${f.domain}.po`} · ${KIND_LABEL[k]}</div>
             <div class="mid mono">${esc(e.msgid)}</div>
             ${e.msgstr ? `<div class="mstr">${esc(e.msgstr)}</div>` : ""}
           </div>`).join("") + (hits.length >= 60 ? `<div class="empty" style="padding:10px 16px">More than 60 matches — narrow the search.</div>` : "")

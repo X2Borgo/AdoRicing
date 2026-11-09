@@ -1,13 +1,13 @@
 # AdoRicing - Ado Hibana Theme Suite
 
-A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "Hibana" World Tour 2025. The project focuses on a portable userland rice built around Hyprland, the DankMaterialShell panel, and the Ado Hibana palette (cyan/magenta accents on a dark navy base). Older Plasma-specific pieces (KWin, Kate) remain in the repo as optional/legacy components.
+A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "Hibana" World Tour 2025. The project focuses on a portable userland rice built around Hyprland, the Noctalia shell, and the Ado Hibana palette (cyan/magenta accents on a dark navy base). Older Plasma-specific pieces (KWin, Kate) remain in the repo as optional/legacy components.
 
 > **Source of truth:** the code in this repo is authoritative. This README describes the current setup; if it ever disagrees with `install.sh` or the config files, the files win.
 
 ![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Debian%20Trixie-red)
 ![WM](https://img.shields.io/badge/WM-Hyprland-cyan)
-![Shell](https://img.shields.io/badge/shell-DankMaterialShell-magenta)
+![Shell](https://img.shields.io/badge/shell-Noctalia-magenta)
 ![Display](https://img.shields.io/badge/display-Wayland-green)
 
 ## Current Stack
@@ -15,7 +15,7 @@ A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "H
 | Role | Tool |
 | --- | --- |
 | Compositor / window manager | Hyprland (Wayland) |
-| Desktop shell / top bar | DankMaterialShell (DMS), Waybar fallback |
+| Desktop shell / top bar | Noctalia, DMS (apt) then Waybar as fallbacks |
 | Code editor | Zed |
 | Browser | Zen, with Chrome as fallback |
 | Terminal | Kitty |
@@ -26,8 +26,8 @@ A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "H
 ## What's Included
 
 ### Wayland Shell Layer
-- **DankMaterialShell (DMS)** as the primary top bar / desktop shell, started by `hypr/scripts/LaunchShell.sh` (`dms run --daemon`)
-- **Waybar** automatic fallback if `dms` is missing or fails to start, with **Mako** (Ado-themed, `mako/config`) as the fallback notification daemon — DMS owns notifications whenever it runs, so `LaunchShell.sh` starts mako only alongside Waybar and kills it when DMS comes up
+- **Noctalia** as the primary desktop shell (config in `noctalia/`, own Luau plugins in `noctalia-plugins/`), started by `hypr/scripts/LaunchShell.sh` (`noctalia --daemon`), with DMS (`dms run --daemon`) as the first fallback
+- **Waybar** automatic fallback if neither Noctalia nor DMS starts, with **Mako** (Ado-themed, `mako/config`) as the fallback notification daemon — Noctalia/DMS own notifications whenever they run, so `LaunchShell.sh` starts mako only alongside Waybar
 - A complete `hypr/` config tree (Lua-based, Hyprland 0.55+ Lua API) installed into `~/.config/hypr`
 - DMS integration files in `hypr/dms/` (colors, layout, cursor, window rules)
 - `dms-plugins/` — a `DockerLauncher` plugin for DMS
@@ -68,7 +68,7 @@ A Hyprland-first theming suite for Debian Trixie / Wayland, inspired by Ado's "H
 - JetBrainsMono Nerd Font (installed by `--fonts`)
 
 Optional:
-- `dms` (DankMaterialShell CLI/binary) installed separately for the panel UI — the repo ships config, not the binary
+- `noctalia` from its Debian apt repo (https://docs.noctalia.dev); `dms` optional as fallback — the repo ships config, not the binaries
 - Quickshell (`qs`) for the shell runtime
 - SDDM if you want the greeter theme
 
@@ -77,19 +77,17 @@ Optional:
 Default install is the Hyprland-oriented set:
 
 ```bash
-cd ~/Desktop/AdoRicing
+cd ~/Projects/ricing/AdoRicing
 ./install.sh
 ```
 
 That installs:
 - Hyprland config (`~/.config/hypr`)
-- Local shell repo link (`~/.config/quickshell/caelestia` -> `~/Desktop/AdoRicing/shell`, the DankMaterialShell source)
 - Kitty, Starship, ZSH, Fastfetch
 - Rofi, Zed
 - Fonts
 - Quickshell panel config
 
-> Note: the `--caelestia-shell` flag and the `caelestia` link path are legacy names. The linked `shell/` tree is **DankMaterialShell**, and the running shell is launched via `dms run`.
 
 ### Symlink install model
 
@@ -106,7 +104,7 @@ Steps that still generate files or run imperatively rather than linking: package
 ```bash
 ./install.sh --hyprland         # Hyprland-focused set (same as default)
 ./install.sh --hypr-config      # Install only the ~/.config/hypr payload
-./install.sh --caelestia-shell  # Link local shell/ (DankMaterialShell) into quickshell config path
+./install.sh --noctalia         # Link noctalia/ into ~/.config/noctalia
 ./install.sh --quickshell       # Quickshell panel config
 ./install.sh --kitty
 ./install.sh --starship
@@ -149,9 +147,9 @@ table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/LaunchShell.
 ```
 
 `LaunchShell.sh` behavior:
-1. If `dms` is on `PATH`, it kills any stray Waybar and runs `dms run --daemon`, then waits for the shell to come up.
-2. If `dms` is missing or fails to start within the timeout, it falls back to Waybar and sends a notification.
-3. The launch log is written to `${XDG_RUNTIME_DIR:-/tmp}/dms-launch.log`.
+1. If `noctalia` is on `PATH`, it runs `noctalia --daemon` and waits for it.
+2. Otherwise it tries `dms run --daemon`, then falls back to Waybar + mako, notifying on each fallback.
+3. The launch log is written to `${XDG_RUNTIME_DIR:-/tmp}/shell-launch.log`.
 
 The Quickshell panel config (`--quickshell`) is a separate, simpler panel installed at:
 
@@ -173,7 +171,8 @@ AdoRicing/
 │   ├── animations/        # Animation presets
 │   ├── hyprlock*.lua      # Lock-screen configs (default + 1080p/2k variants)
 │   └── hypridle.lua       # Idle/lock daemon config
-├── shell/                 # DankMaterialShell source (git submodule)
+├── noctalia/              # Noctalia shell config + Ado palette
+├── noctalia-plugins/      # Our Noctalia Luau plugins (app-inbox, instal-i18n, docker-launcher, battery)
 ├── dms-plugins/           # DMS plugins (DockerLauncher)
 ├── quickshell/            # Standalone Quickshell panel config
 ├── terminal/              # Kitty, Starship, ZSH, Fastfetch
@@ -292,12 +291,11 @@ Current=ado-theme
 
 - `kwin/` is Plasma-only and not wired into the Hyprland workflow; kept for archival use.
 - `kate/` ships a Kate/KWrite syntax theme for users who still use Kate outside Plasma.
-- The `caelestia` naming in the installer (`--caelestia-shell`, the link path) is historical; the actual shell is DankMaterialShell.
 
 ## Updating
 
 ```bash
-cd ~/Desktop/AdoRicing
+cd ~/Projects/ricing/AdoRicing
 git pull
 git submodule update --init --recursive   # refresh the DankMaterialShell source
 ./install.sh

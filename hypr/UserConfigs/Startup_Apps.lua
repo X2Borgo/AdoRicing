@@ -24,4 +24,7 @@ table.insert(ctx.autostart, { cmd = "bash -lc 'pgrep -x ydotoold >/dev/null || y
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/FixCursorMonitors.sh --watch" })
 -- Corrects agent tab markers the lifecycle hooks fail to update
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/KittyAgentTabSync.sh --watch" })
+-- Apps launched as systemd scopes (e.g. T3 Code) only see the systemd user
+-- environment; without XDG_SESSION_TYPE Electron falls back to XWayland.
+table.insert(ctx.autostart, { cmd = "dbus-update-activation-environment --systemd XDG_SESSION_TYPE" })
 return true

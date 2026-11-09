@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # /* ---- 💫 https://github.com/LinuxBeginnings 💫 ---- */  ##
-# Scripts for refreshing the DMS shell, rofi, and wallust
+# Scripts for refreshing the shell (Noctalia/DMS), rofi, and wallust
 
 SCRIPTSDIR=$HOME/.config/hypr/scripts
 UserScripts=$HOME/.config/hypr/UserScripts
@@ -15,6 +15,8 @@ file_exists() {
 }
 
 restart_shell() {
+  pkill -x noctalia >/dev/null 2>&1 || true
+
   if command -v dms >/dev/null 2>&1; then
     dms kill >/dev/null 2>&1 || true
   fi

@@ -24,7 +24,7 @@ vars["SwwwRandom"] = (vars["UserScripts"] or "") .. "/WallpaperAutoChange.sh"
 vars["livewallpaper"] = ""
 vars["wallDIR"] = home() .. "/Pictures/wallpapers"
 -- ## wallpaper stuff ###
-table.insert(ctx.autostart, { cmd = "swww-daemon --format xrgb" })
+-- table.insert(ctx.autostart, { cmd = "swww-daemon --format xrgb" })  -- disabled: noctalia owns the wallpaper
 -- exec-once = mpvpaper '*' -o "load-scripts=no no-audio --loop" $livewallpaper
 -- wallpaper random
 -- exec-once = $SwwwRandom $wallDIR # random wallpaper switcher every 30 minutes
@@ -32,21 +32,24 @@ table.insert(ctx.autostart, { cmd = "swww-daemon --format xrgb" })
 table.insert(ctx.autostart, { cmd = "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" })
 table.insert(ctx.autostart, { cmd = "systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" })
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/LaunchKitty.sh", rules = { workspace = "workspace 1 silent" } })
-table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/SaveKittySession.sh --watch" })
+-- Kitty session save/restore disabled while using T3 Code.
+-- table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/SaveKittySession.sh --watch" })
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/Polkit.sh" })
 table.insert(ctx.autostart, { cmd = "nm-applet --indicator" })
 table.insert(ctx.autostart, { cmd = "nm-tray" })
--- DMS owns org.freedesktop.Notifications; do not start SwayNC alongside it.
+-- The shell (Noctalia, or DMS as fallback) owns org.freedesktop.Notifications; do not start SwayNC alongside it.
 -- exec-once = ags
 -- exec-once = blueman-applet
 -- exec-once = rog-control-center
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/PortalHyprlandUbuntu2604.sh" })
 table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/LaunchShell.sh" })
-table.insert(ctx.autostart, { cmd = "hypridle" })
-table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/Hyprsunset.sh init" })
--- Clipboard manager
-table.insert(ctx.autostart, { cmd = "wl-paste --type text --watch cliphist store" })
-table.insert(ctx.autostart, { cmd = "wl-paste --type image --watch cliphist store" })
+-- Noctalia's [idle] service locks and blanks the screen; hypridle would double it.
+-- table.insert(ctx.autostart, { cmd = "hypridle" })
+-- Night light is Noctalia's [nightlight] now.
+-- table.insert(ctx.autostart, { cmd = (vars["scriptsDir"] or "") .. "/Hyprsunset.sh init" })
+-- Clipboard history is Noctalia's (SUPER+ALT+V); cliphist only feeds the rofi ClipManager.sh.
+-- table.insert(ctx.autostart, { cmd = "wl-paste --type text --watch cliphist store" })
+-- table.insert(ctx.autostart, { cmd = "wl-paste --type image --watch cliphist store" })
 -- Rainbow borders (disabled by default; use quick settings menu)
 -- exec-once = $UserScripts/RainbowBorders.sh
 -- Here are list of features available but disabled by default

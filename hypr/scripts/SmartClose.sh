@@ -12,12 +12,13 @@ window_pid="$(jq -r '.pid // empty' <<< "$active_window")"
 
 [[ "$address" =~ ^0x[0-9a-fA-F]+$ ]] || exit 1
 
-if [[ "${window_class,,}" == "kitty" ]]; then
-  if ! "$scripts_dir/SaveKittySession.sh" --save --pid "$window_pid"; then
-    notify-send -u critical "Kitty was not closed" \
-      "The tab/session state could not be saved. Try Super+Q again."
-    exit 1
-  fi
-fi
+# Kitty session save/restore disabled while using T3 Code.
+# if [[ "${window_class,,}" == "kitty" ]]; then
+#   if ! "$scripts_dir/SaveKittySession.sh" --save --pid "$window_pid"; then
+#     notify-send -u critical "Kitty was not closed" \
+#       "The tab/session state could not be saved. Try Super+Q again."
+#     exit 1
+#   fi
+# fi
 
 hyprctl dispatch "hl.dsp.window.close({ window = \"address:$address\" })"

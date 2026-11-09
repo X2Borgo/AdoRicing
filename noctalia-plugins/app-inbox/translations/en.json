@@ -1,0 +1,29 @@
+{
+  "settings": {
+    "scripts_dir": {
+      "label": "Provider scripts folder",
+      "description": "Folder holding slack_inbox.py, gmail_imap.py, google_calendar_feed.py and deployment_status.py (the DMS scripts are reused in place)."
+    },
+    "secrets_dir": {
+      "label": "Secrets folder",
+      "description": "Folder with linear-api-key, gmail-address, gmail-app-password and google-calendar-ical-url (written by the configure-*.sh helpers)."
+    },
+    "python": {
+      "label": "Python interpreter",
+      "description": "Interpreter used to run the Slack, Gmail and Deployments scripts."
+    },
+    "enable_github": { "label": "Enable GitHub (open PRs via gh)" },
+    "enable_slack": { "label": "Enable Slack" },
+    "enable_linear": { "label": "Enable Linear" },
+    "enable_gmail": { "label": "Enable Gmail" },
+    "enable_calendar": { "label": "Enable Google Calendar" },
+    "enable_deployments": { "label": "Enable Deployments (Docker / Kubernetes)" },
+    "glyph": { "label": "Bar glyph" },
+    "show_breakdown": {
+      "label": "Per-provider chips",
+      "description": "Show one chip per provider (GH 3 · SL 5 …) instead of a single total; clicking a chip opens that provider."
+    },
+    "hide_when_zero": { "label": "Hide when nothing is pending" }
+  },
+  "title": "App Inbox"
+}

@@ -24,10 +24,17 @@
 - [x] Mako notification theme (fallback daemon for the Waybar path; DMS owns notifications otherwise)
 - [ ] Wallpaper / monitor layout presets for Hyprland
 
+## Noctalia follow-ups (from docs/archive/NOCTALIA_MIGRATION_PLAN.md)
+
+- [ ] Wallpaper scripts (WallpaperSelect/Random, swww, wallust) still drive swww: port to `noctalia msg wallpaper-set` or set `[wallpaper] enabled = false`
+- [ ] Fresh install: run `noctalia msg plugins enable <id>` once per community plugin (config alone does not fetch them)
+- [ ] `icefish/phone-connect` upstream bug (`service.luau:437` calls `runCli` before definition)
+- [ ] Port gitmojiLauncher / dankGifSearch
+- [ ] Idle CPU with full config ~3.5-5.5% of a core vs DMS 0.5%: profile per widget
+- [ ] InstalI18n Noctalia plugin still calls scripts from `dms-plugins/InstalI18n/scripts`
+
 ## Secondary Work
 
-- [ ] Full Quickshell setup beyond the current panel
-- [ ] Quickshell asset packaging and startup helpers
 - [ ] GRUB bootloader theme
 - [ ] Plymouth boot splash screen
 - [ ] GTK theme for cross-toolkit consistency

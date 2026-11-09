@@ -149,6 +149,9 @@ hl.layer_rule({ match = { namespace = "rofi" }, blur = true })
 hl.layer_rule({ match = { namespace = "notifications" }, blur = true })
 hl.layer_rule({ match = { namespace = "quickshell:overview" }, blur = true })
 hl.layer_rule({ match = { namespace = "quickshell:overview" }, ignore_alpha = 0.5 })
+-- Noctalia surfaces: blur behind translucent bar/panels, Noctalia animates them itself
+hl.layer_rule({ name = "noctalia", match = { namespace = "^noctalia-(bar-.+|notification|dock|panel|attached-panel|osd|window-switcher)$" }, no_anim = true, ignore_alpha = 0.5, blur = true, blur_popups = true })
+hl.window_rule({ match = { class = "^(dev.noctalia.Noctalia)$" }, float = true, size = "1080 920" })
 hl.window_rule({ name = "Picture-in-Picture", match = { title = "^[Pp]icture-in-[Pp]icture$" }, float = true, move = "72% 7%", opacity = "0.95 0.75", pin = true, keep_aspect_ratio = true, size = "(monitor_w*0.3) (monitor_h*0.3)" })
 -- Named rule for CachyOS Kernel Manager
 hl.window_rule({ name = "CachyOS Kernel Manager", match = { class = "^(org.cachyos.KernelManager)$", title = "^(CachyOS Kernel Manager)$", initial_class = "^(org.cachyos.KernelManager)$", initial_title = "^(CachyOS Kernel Manager)$" }, float = true, center = true, size = "(monitor_w*0.6) (monitor_h*0.6)" })

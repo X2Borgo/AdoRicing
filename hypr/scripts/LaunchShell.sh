@@ -2,14 +2,19 @@
 
 set -euo pipefail
 
-log_file="${XDG_RUNTIME_DIR:-/tmp}/dms-launch.log"
+# Shell preference: Noctalia, then DMS, then Waybar + mako.
+log_file="${XDG_RUNTIME_DIR:-/tmp}/shell-launch.log"
 
-shell_running() {
+noctalia_running() {
+  pgrep -x noctalia >/dev/null 2>&1
+}
+
+dms_running() {
   pgrep -x qs >/dev/null 2>&1 || pgrep -x quickshell >/dev/null 2>&1
 }
 
-# DMS owns org.freedesktop.Notifications while it runs; mako is only the
-# notification daemon for the Waybar fallback path.
+# Noctalia and DMS own org.freedesktop.Notifications while they run; mako is
+# only the notification daemon for the Waybar fallback path.
 stop_mako() {
   pkill -x mako >/dev/null 2>&1 || true
 }
@@ -20,42 +25,52 @@ start_mako() {
   fi
 }
 
-start_waybar() {
+stop_shells() {
+  pkill -x noctalia >/dev/null 2>&1 || true
   pkill -x ags >/dev/null 2>&1 || true
   pkill -x qs >/dev/null 2>&1 || true
   pkill -x quickshell >/dev/null 2>&1 || true
   pkill -x waybar >/dev/null 2>&1 || true
+}
+
+start_waybar() {
+  stop_shells
   if command -v waybar >/dev/null 2>&1; then
     waybar >/dev/null 2>&1 &
   fi
   start_mako
 }
 
-if ! command -v dms >/dev/null 2>&1; then
-  start_waybar
-  exit 0
-fi
+# Waits up to 8s for the given check to succeed.
+wait_for() {
+  for _ in {1..40}; do
+    if "$1"; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  "$1"
+}
 
 pkill -x waybar >/dev/null 2>&1 || true
 stop_mako
-dms run --daemon >"$log_file" 2>&1 &
 
-for _ in {1..40}; do
-  if shell_running; then
-    pkill -x waybar >/dev/null 2>&1 || true
-    stop_mako
+if command -v noctalia >/dev/null 2>&1; then
+  # --daemon returns once the shell is up.
+  timeout 15s noctalia --daemon >"$log_file" 2>&1 || true
+  if wait_for noctalia_running; then
     exit 0
   fi
+fi
 
-  sleep 0.2
-done
-
-if shell_running; then
-  pkill -x waybar >/dev/null 2>&1 || true
-  stop_mako
-  exit 0
+if command -v dms >/dev/null 2>&1; then
+  dms run --daemon >>"$log_file" 2>&1 &
+  if wait_for dms_running; then
+    notify-send "Shell fallback" "Noctalia failed to start, launched DMS" -u low >/dev/null 2>&1 || true
+    exit 0
+  fi
 fi
 
 start_waybar
 sleep 0.3
-notify-send "Shell fallback" "DMS failed to start, launching Waybar" -u low >/dev/null 2>&1 || true
+notify-send "Shell fallback" "Noctalia and DMS failed to start, launching Waybar" -u low >/dev/null 2>&1 || true

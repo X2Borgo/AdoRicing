@@ -106,8 +106,8 @@ INSTALL_ROFI=false
 INSTALL_MAKO=false
 INSTALL_ZED=false
 INSTALL_FONTS=false
-INSTALL_CAELESTIA_SHELL=false
 INSTALL_QUICKSHELL=false
+INSTALL_NOCTALIA=false
 INSTALL_HYPR_CONFIG=false
 INSTALL_KWIN=false
 
@@ -121,8 +121,7 @@ if [ $# -eq 0 ]; then
     INSTALL_MAKO=true
     INSTALL_ZED=true
     INSTALL_FONTS=true
-    INSTALL_CAELESTIA_SHELL=true
-    INSTALL_QUICKSHELL=true
+    INSTALL_NOCTALIA=true
 else
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -136,8 +135,8 @@ else
             --mako) INSTALL_MAKO=true ;;
             --zed) INSTALL_ZED=true ;;
             --fonts) INSTALL_FONTS=true ;;
-            --caelestia-shell) INSTALL_CAELESTIA_SHELL=true ;;
             --quickshell) INSTALL_QUICKSHELL=true ;;
+            --noctalia) INSTALL_NOCTALIA=true ;;
             --hypr|--hypr-config) INSTALL_HYPR_CONFIG=true ;;
             --kwin) INSTALL_KWIN=true ;;
             --all)
@@ -151,8 +150,7 @@ else
                 INSTALL_MAKO=true
                 INSTALL_ZED=true
                 INSTALL_FONTS=true
-                INSTALL_CAELESTIA_SHELL=true
-                INSTALL_QUICKSHELL=true
+                INSTALL_NOCTALIA=true
                 INSTALL_HYPR_CONFIG=true
                 INSTALL_KWIN=true
                 ;;
@@ -166,14 +164,13 @@ else
                 INSTALL_MAKO=true
                 INSTALL_ZED=true
                 INSTALL_FONTS=true
-                INSTALL_CAELESTIA_SHELL=true
-                INSTALL_QUICKSHELL=true
+                INSTALL_NOCTALIA=true
                 ;;
             --help)
                 echo "Usage: ./install.sh [OPTIONS]"
                 echo ""
                 echo "Default with no options installs the Hyprland-focused set:"
-                echo "  hypr config, local caelestia shell link, kitty, starship, zsh, fastfetch, rofi, zed, fonts, quickshell"
+                echo "  hypr config, noctalia, kitty, starship, zsh, fastfetch, rofi, zed, fonts"
                 echo ""
                 echo "Options:"
                 echo "  --hyprland    Install the Hyprland-focused set"
@@ -188,10 +185,9 @@ else
                 echo "  --rofi        Install Rofi configuration"
                 echo "  --mako        Install Mako notification theme (Waybar fallback daemon)"
                 echo "  --zed         Install Zed themes and settings"
-                echo "  --fonts       Install JetBrainsMono Nerd Font"
-                echo "  --caelestia-shell Link local shell/ repo to ~/.config/quickshell/caelestia"
-                echo "                    (does not build/install Caelestia QML plugins)"
-                echo "  --quickshell  Install Quickshell panel config"
+                echo "  --fonts       Install JetBrainsMono Nerd Font + Mochiy Pop One"
+                echo "  --quickshell  Install the legacy Quickshell panel config (opt-in)"
+                echo "  --noctalia    Link Noctalia shell config (~/.config/noctalia)"
                 echo "  --kwin        Install legacy Plasma-only KWin script"
                 echo "  --all         Install everything, including legacy Plasma pieces"
                 exit 0
@@ -231,8 +227,8 @@ if [ "$INSTALL_HYPR_CONFIG" = true ]; then
 
     link_dir "$SCRIPT_DIR/hypr" "$HOME/.config/hypr"
 
-    if ! command_exists caelestia && ! command_exists qs && ! command_exists quickshell; then
-        echo -e "${YELLOW}Warning: no shell launcher found (caelestia/qs/quickshell). Install Caelestia shell or Quickshell.${NC}"
+    if ! command_exists noctalia && ! command_exists dms; then
+        echo -e "${YELLOW}Warning: no shell found (noctalia/dms). Install noctalia (--noctalia) or LaunchShell.sh falls back to Waybar.${NC}"
     fi
 
     echo -e "${GREEN}Hyprland config installed${NC}"
@@ -253,6 +249,17 @@ if [ "$INSTALL_FONTS" = true ]; then
     else
         echo -e "${GREEN}JetBrainsMono Nerd Font already installed${NC}"
     fi
+    # Mochiy Pop One: lock screen clock font, plus a repo-built subset whose digits are kanji (時/分 line)
+    if ! fc-list | grep -qi "Mochiy Pop One:"; then
+        mkdir -p "$HOME/.local/share/fonts/MochiyPopOne"
+        curl -fLo "$HOME/.local/share/fonts/MochiyPopOne/MochiyPopOne-Regular.ttf" \
+            "https://github.com/google/fonts/raw/main/ofl/mochiypopone/MochiyPopOne-Regular.ttf"
+        echo -e "${GREEN}Mochiy Pop One installed${NC}"
+    fi
+    mkdir -p "$HOME/.local/share/fonts/Ado"
+    link_file "$SCRIPT_DIR/noctalia/assets/fonts/MochiyPopOneKanji-Regular.ttf" \
+        "$HOME/.local/share/fonts/Ado/MochiyPopOneKanji-Regular.ttf"
+    fc-cache -f "$HOME/.local/share/fonts"
     append_component "Fonts"
 fi
 
@@ -261,7 +268,7 @@ if [ "$INSTALL_SDDM" = true ]; then
 
     install_package "sddm"
     install_package "qt6-base-dev"
-    install_package "qml-module-qt5compat-graphicaleffects"
+    install_package "qml6-module-qt5compat-graphicaleffects"
 
     SDDM_THEME_DIR="/usr/share/sddm/themes/$NAME"
     SDDM_CONF_D="/etc/sddm.conf.d"
@@ -379,6 +386,19 @@ if [ "$INSTALL_ROFI" = true ]; then
     append_component "Rofi"
 fi
 
+if [ "$INSTALL_NOCTALIA" = true ]; then
+    echo -e "\n${MAGENTA}Installing Noctalia shell configuration...${NC}"
+    # Noctalia comes from its own APT repo (pkg.noctalia.dev), not Debian's.
+    if ! command -v noctalia >/dev/null 2>&1; then
+        echo -e "${YELLOW}noctalia not found: add the repo from https://docs.noctalia.dev/noctalia/getting-started/installation/#debian and apt install noctalia${NC}"
+    fi
+
+    link_dir "$SCRIPT_DIR/noctalia" "$HOME/.config/noctalia"
+
+    echo -e "${GREEN}Noctalia configuration installed${NC}"
+    append_component "Noctalia"
+fi
+
 if [ "$INSTALL_MAKO" = true ]; then
     echo -e "\n${MAGENTA}Installing Mako notification theme...${NC}"
     install_package "mako-notifier"
@@ -434,24 +454,6 @@ if [ "$INSTALL_ZED" = true ]; then
     append_component "Zed"
 fi
 
-if [ "$INSTALL_CAELESTIA_SHELL" = true ]; then
-    echo -e "\n${MAGENTA}Configuring local Caelestia shell repo...${NC}"
-
-    if [ ! -f "$SCRIPT_DIR/shell/quickshell/shell.qml" ]; then
-        echo -e "${YELLOW}Local shell repo not found at $SCRIPT_DIR/shell. Skipping Caelestia setup.${NC}"
-    else
-        CAELESTIA_DEST="$HOME/.config/quickshell/caelestia"
-        link_dir "$SCRIPT_DIR/shell" "$CAELESTIA_DEST"
-        echo -e "${YELLOW}Note: this only links the shell sources. The compiled Caelestia/qs.utils QML modules must already be installed for it to render.${NC}"
-
-        if ! command_exists qs && ! command_exists caelestia; then
-            echo -e "${YELLOW}Warning: install quickshell/qs or caelestia CLI to launch Caelestia shell.${NC}"
-        fi
-
-        append_component "Caelestia shell (local repo link)"
-    fi
-fi
-
 if [ "$INSTALL_QUICKSHELL" = true ]; then
     echo -e "\n${MAGENTA}Installing Quickshell panel config...${NC}"
 
@@ -490,7 +492,7 @@ echo -e "  2. ${CYAN}Launch Rofi${NC} with ${GREEN}rofi -show drun${NC}"
 echo -e "  3. ${CYAN}Open Kitty${NC} to verify the terminal theme"
 echo -e "  4. ${CYAN}Open Zed${NC} to verify the editor theme"
 echo -e "  5. ${CYAN}Reload Hyprland${NC} with ${GREEN}hyprctl reload${NC}"
-echo -e "  6. ${CYAN}If linked successfully, Caelestia shell is now used from${NC} ${GREEN}~/Desktop/AdoRicing/shell${NC}"
+echo -e "  6. ${CYAN}Enable community Noctalia plugins once${NC} with ${GREEN}noctalia msg plugins enable <id>${NC}"
 echo -e "  7. ${CYAN}If using SDDM${NC}, log out and back in to verify the greeter theme"
 
 echo -e "\n${GREEN}AdoRicing is now aligned with a Hyprland-first setup.${NC}\n"
