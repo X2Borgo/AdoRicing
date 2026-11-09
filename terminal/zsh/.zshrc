@@ -137,21 +137,22 @@ function precmd() {
 }
 
 # --- 3. ALIASES ---
-alias conf="kate ~/Desktop/AdoRicing/terminalCustomization/zsh/.zshrc"
+alias conf="kate ~/Projects/ricing/AdoRicing/terminalCustomization/zsh/.zshrc"
 alias re="source $HOME/.zshrc"
 alias c="clear" # 'clear' is overridden below to show Ado
-alias kconf="kate ~/Desktop/AdoRicing/terminalCustomization/kitty/kitty.conf"
+alias kconf="kate ~/Projects/ricing/AdoRicing/terminalCustomization/kitty/kitty.conf"
 alias fconf="kate $HOME/.config/fastfetch/ado.jsonc"
 
 # Custom zed workspace aliases
-alias ado="cd ~/Desktop/AdoRicing && zed ."
-alias adoi="~/Desktop/AdoRicing/install.sh"
-alias dora="cd ~/Desktop/DoraFeature && zed ."
-alias pn="cd ~/Desktop/price-ninja-css && zed ."
-alias drv="cd ~/Desktop/DreviaEsports && zed ."
+alias ado="cd ~/Projects/ricing/AdoRicing && zed ."
+alias adoi="~/Projects/ricing/AdoRicing/install.sh"
+alias dora="cd ~/Projects/Instal/price-ninja-top-10 && zed ."
+alias pn="cd ~/Projects/Instal/price-ninja-css && zed ."
+alias drv="cd ~/Projects/Drevia/DreviaEsports && zed ."
 
 alias bigup='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 alias rdms="dms kill && ~/.config/hypr/scripts/LaunchShell.sh"
+alias rshell="~/.config/hypr/scripts/Refresh.sh"
 
 alias gg="gemini"
 alias gs="git status"
@@ -202,3 +203,16 @@ eval "$(uvx --generate-shell-completion zsh)"
 # Machine-specific settings live outside the repo; this file is created by
 # install.sh and never committed.
 [ -f "$HOME/.config/ado/zsh.local.zsh" ] && source "$HOME/.config/ado/zsh.local.zsh"
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/alborghi/.local/bin:$PATH"
+
+# opencode
+export PATH=/home/alborghi/.opencode/bin:$PATH
+
+# Per-tool env snippets (Cloudflare token etc.), same layout as lorenzo-dev
+for f in "$HOME"/.config/env.d/*.sh(N); do . "$f"; done
+
+# Vite+ bin (https://viteplus.dev)
+. "/home/alborghi/.config/vite-plus/env"
